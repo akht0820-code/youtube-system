@@ -1,0 +1,65 @@
+name: 動画自動生成・投稿
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # 毎日 18:00 JST（UTC+9 → UTC 9:00）
+  workflow_dispatch:       # GitHub UI から手動実行も可能
+
+jobs:
+  generate-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    services:
+      voicevox:
+        image: voicevox/voicevox_engine:cpu-ubuntu20.04-latest
+        ports:
+          - 50021:50021
+
+    steps:
+      - name: コードをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: システムパッケージをインストール
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            fonts-noto-cjk \
+            ffmpeg
+
+      - name: Pythonパッケージをインストール
+        run: pip install -r requirements.txt
+
+      - name: 認証ファイルを復元
+        run: |
+          echo "${{ secrets.GOOGLE_TOKEN }}"       | base64 --decode > token.json
+          echo "${{ secrets.GOOGLE_CREDENTIALS }}" | base64 --decode > credentials.json
+
+      - name: 動画を生成してYouTubeにアップロード
+        env:
+          # 秘密情報
+          GEMINI_API_KEY:  ${{ secrets.GEMINI_API_KEY }}
+          NTFY_TOPIC:      ${{ secrets.NTFY_TOPIC }}
+          SPREADSHEET_ID:  ${{ secrets.SPREADSHEET_ID }}
+          # モデル設定
+          GEMINI_MODEL_SIMPLE:   gemini-2.0-flash-lite
+          GEMINI_MODEL_STANDARD: gemini-2.5-flash
+          GEMINI_MODEL_QUALITY:  gemini-2.5-flash
+          # 分析設定
+          ANALYTICS_COLLECTOR: youtube
+          ANALYTICS_STORE:     sheets
+          ANALYTICS_MODEL:     gemini
+          # 性能設定（GitHub Actions: 2コア / 7GB RAM）
+          TTS_WORKERS:     2
+          ENCODE_PRESET:   veryfast
+          ENCODE_THREADS:  2
+        run: |
+          mkdir -p output
+          cd scripts
+          python generator.py --auto

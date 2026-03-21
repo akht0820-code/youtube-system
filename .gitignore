@@ -1,0 +1,16 @@
+# 秘密情報・認証情報
+.env
+token.json
+credentials.json
+_secret_*.txt
+
+# 生成物
+output/
+logs/
+suggestions.json
+stats.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
