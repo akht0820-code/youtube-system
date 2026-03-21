@@ -14,3 +14,9 @@ stats.json
 __pycache__/
 *.pyc
 *.pyo
+
+# ローカルツール
+.claude/
+
+# pipの誤生成ファイル
+=*
