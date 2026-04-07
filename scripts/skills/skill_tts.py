@@ -1,4 +1,4 @@
-# スキル: 音声合成（VOICEVOX / AivisSpeech / AquesTalk）
+# スキル: 音声合成（AquesTalk1）
 
 import json
 import sys
@@ -54,8 +54,6 @@ def run_tts(run_dir: str | Path) -> dict:
         # 台本JSONを読み込む
         script = get_script_json(run_dir)
 
-        # 起動確認はtts.generate_audio_from_script()内で一元管理
-        # （AquesTalk時はスキップ、VOICEVOX系は内部でensure_voicevox()を呼ぶ）
         logger.log("【音声合成】音声を生成しています...")
 
         # 音声生成（audio_dir = run_dir そのもの）

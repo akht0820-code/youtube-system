@@ -9,7 +9,6 @@ import re
 import shutil
 import subprocess
 import sys
-import textwrap
 import wave
 from pathlib import Path
 
@@ -270,13 +269,6 @@ def _get_blink_eye(char_name: str, abs_time: float,
 _ANIM_CYCLE_FRAMES = 12  # 1ループのステップ数（FPS=30・2フレーム刻みで約0.8秒ループ）
 _overlay_cache: dict[tuple, "tuple | None"] = {}  # (emotion, char, step) → (np, ox, oy) or None — 最大360エントリ(自然収束)
 
-
-def _draw_emotion_fx(img: Image.Image, emotion: str) -> Image.Image:
-    """感情タグに対応するPIL描画エフェクトを重ねて返す。
-    静止エフェクトは最小限。アニメーションは _build_anim_overlay で担当。
-    """
-    # 静止エフェクトは何もしない（アニメオーバーレイに一本化）
-    return img
 
 # ── 目の形状グループ（mid-switchはグループ内遷移のみ許可） ─────
 # 形状が似た目同士でグループ化し、急激な目変化を防ぐ
@@ -1886,9 +1878,6 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
 
         # トランジション情報（この行がトランジション対象か）
         _tr_info = _transition_at.get(_i)  # (sec_number, sec_title, sec_type) or None
-        _tr_wipe_frames = round(TRANSITION_WIPE_SEC * FPS)   # ワイプフレーム数
-        _tr_card_frames = round(TRANSITION_CARD_SEC * FPS)   # 表紙フレーム数
-        _tr_total_frames = round(TRANSITION_TOTAL_SEC * FPS)  # トランジション全体フレーム数
 
         for _fi in range(_n_frames):
             _t = _fi / FPS
@@ -1898,7 +1887,7 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
 
             # ── セクショントランジション: 無音期間の先頭部分をトランジション画面に差し替え ──
             if _tr_info and _in_silence and _t < TRANSITION_TOTAL_SEC:
-                _tr_num, _tr_title, _tr_type = _tr_info
+                _tr_num, _tr_title, _ = _tr_info
                 _tr_t = _t  # トランジション内での経過時間
                 if _tr_t < TRANSITION_WIPE_SEC:
                     # ワイプアニメーション

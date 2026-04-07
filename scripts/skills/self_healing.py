@@ -31,9 +31,9 @@ _SIGNATURES = [
         "cause": "ファイルロック（ゾンビプロセス）",
     },
     {
-        "id": "VOICEVOX_DOWN",
-        "patterns": [r"VOICEVOXに接続できません", r"VOICEVOXを起動できませんでした", r"起動がタイムアウトしました", r"実行ファイルが見つかりませんでした", r"ConnectionRefused.*1005", r"ConnectionRefused.*50021"],
-        "cause": "VOICEVOX/AivisSpeech 未起動",
+        "id": "AQUESTALK_UNAVAILABLE",
+        "patterns": [r"32-bit PowerShell.*見つかりません", r"AquesTalk1 失敗", r"出力ファイルが生成されませんでした", r"AquesTalk.*実行できません"],
+        "cause": "AquesTalk1 実行失敗（32bit PowerShell不在 or DLL異常）",
     },
     {
         "id": "API_RATE_LIMIT",
@@ -232,10 +232,9 @@ _ESCALATION = {
         ("tempファイル強制削除", _fix_delete_temp_files),
         ("クリーンアップ+待機", _fix_cleanup_and_wait),
     ],
-    "VOICEVOX_DOWN": [
-        ("15秒待機（起動待ち）", _fix_wait(15)),
-        ("30秒待機（再起動待ち）", _fix_wait(30)),
-        ("60秒待機（最終待機）", _fix_wait(60)),
+    "AQUESTALK_UNAVAILABLE": [
+        ("WAV全削除", _fix_delete_wavs_rerun_tts),
+        ("クリーンアップ+待機", _fix_cleanup_and_wait),
     ],
     "API_RATE_LIMIT": [
         ("60秒待機", _fix_wait(60)),

@@ -2,13 +2,8 @@
 #
 # .env で切り替えるキー:
 #   LLM_PROVIDER       = gemini          # gemini / openai / claude
-#   TTS_PROVIDER       = voicevox        # voicevox / aivis / openai / google
+#   TTS_PROVIDER       = aquestalk       # aquestalk（tts.py で直接処理）
 #   THUMBNAIL_PROVIDER = local           # local / dalle / stable_diffusion
-#
-# 新しいプロバイダを追加する場合:
-#   1. 対応する *_client.py に実装クラスを追加する
-#   2. 下の各関数に elif ブロックを追加する
-#   3. .env のキーを変更する
 
 import os
 from pathlib import Path
@@ -18,7 +13,6 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 from llm_client import LLMClient
-from tts_client import TTSClient
 from thumbnail_client import ThumbnailGenerator
 
 
@@ -65,34 +59,6 @@ def get_llm_client() -> LLMClient:
         ".env の LLM_PROVIDER に 'gemini' を設定してください"
     )
 
-
-def get_tts_client() -> TTSClient:
-    """環境変数 TTS_PROVIDER に応じたTTSクライアントを返す"""
-    provider = os.getenv("TTS_PROVIDER", "aquestalk").lower()
-
-    if provider == "voicevox":
-        from tts_client import VoicevoxTTSClient
-        url = os.getenv("VOICEVOX_URL", "http://localhost:50021")
-        return VoicevoxTTSClient(base_url=url)
-
-    elif provider == "aivis":
-        from tts_client import AivisSpeechTTSClient
-        url = os.getenv("AIVIS_URL", "http://localhost:10101")
-        return AivisSpeechTTSClient(base_url=url)
-
-    # elif provider == "openai":
-    #     from tts_client import OpenAITTSClient
-    #     from secrets import get_secret
-    #     return OpenAITTSClient(api_key=get_secret("OPENAI_API_KEY"))
-
-    # elif provider == "google":
-    #     from tts_client import GoogleCloudTTSClient
-    #     return GoogleCloudTTSClient(credentials_path=os.getenv("GOOGLE_CREDENTIALS", "credentials.json"))
-
-    raise ValueError(
-        f"未対応のTTSプロバイダ: {provider!r}\n"
-        ".env の TTS_PROVIDER に 'voicevox' を設定してください"
-    )
 
 
 def get_thumbnail_generator() -> ThumbnailGenerator:
