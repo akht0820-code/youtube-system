@@ -81,6 +81,8 @@ PHASE_ORDER = [
     "script_gen",
     "metadata",
     "pronunciation",
+    "se_assign",
+    "prosody",
     "tts",
     "video_build",
     "thumbnail",

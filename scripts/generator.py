@@ -307,20 +307,15 @@ def main():
     review = run_self_review(run_dir)
 
     if review.get("needs_repair"):
-        # キャラクターロール逸脱を自動修復 → TTS以降を再実行
-        print("[自動修復] 台本修復済み → 発音補正・SE・プロソディ・音声・動画・サムネを再生成します...")
+        # キャラクターロール逸脱を自動修復 → 発音+TTS+動画のみ再実行
+        # SE/プロソディはテキスト修復の影響を受けないためスキップ
+        print("[自動修復] 台本修復済み → 発音補正・音声・動画を再生成します...")
         from skills.skill_pronunciation import run_pronunciation
-        from skills.skill_se_assign import run_se_assign
-        from skills.skill_prosody import run_prosody
         from skills.skill_tts import run_tts
         from skills.skill_video_build import run_video_build
-        from skills.skill_thumbnail import run_thumbnail
         run_pronunciation(run_dir)
-        run_se_assign(run_dir)
-        run_prosody(run_dir)
-        run_phase_with_healing("tts(再生成)", run_tts, run_dir)
-        run_phase_with_healing("video_build(再生成)", run_video_build, run_dir)
-        run_thumbnail(run_dir)
+        run_phase_with_healing("tts", run_tts, run_dir)
+        run_phase_with_healing("video_build", run_video_build, run_dir)
         print(f"  → 再生成完了 ({_elapsed()})\n")
 
     elif not review["passed"] and review.get("errors", 0) > 0:

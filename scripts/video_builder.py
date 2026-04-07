@@ -1920,7 +1920,7 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
                         f"ffmpeg stderr:\n{_ff_stderr[-2000:]}"
                     ) from _pipe_err
                 _total_frames_enc += 1
-                if _total_frames_enc % 3000 == 0:
+                if _total_frames_enc % 1500 == 0:
                     gc.collect()
                 continue  # 通常のフレーム合成をスキップ
 
@@ -1998,8 +1998,8 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
                 ) from _pipe_err
             _total_frames_enc += 1
 
-            # 3000フレームごとにGC実行 + メモリチェック + 進捗表示
-            if _total_frames_enc % 3000 == 0:
+            # 1500フレームごとにGC実行 + メモリチェック + 進捗表示
+            if _total_frames_enc % 1500 == 0:
                 gc.collect()
                 _total_target = round(total_duration * FPS)
                 _pct = _total_frames_enc / max(1, _total_target) * 100
@@ -2037,12 +2037,12 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
                                     _mem_avail = min(_mem_avail, _win_avail)
                             except Exception:
                                 pass
-                    if _mem_avail < 1024:
+                    if _mem_avail < 2048:
                         _kai_char_cache.clear()
                         _wb_cache.clear()
                         _irasutoya_cache.clear()
                         gc.collect()
-                        print(f"  [メモリ警告] 空き{_mem_avail}MB → キャッシュ全クリア")
+                        print(f"  [メモリ警告] 空き{_mem_avail}MB(<2GB) → キャッシュ全クリア")
                 except Exception:
                     pass
                 print(f"  エンコード進捗: {_total_frames_enc}/{_total_target}フレーム ({_pct:.0f}%)")

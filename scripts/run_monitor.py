@@ -168,7 +168,7 @@ def _detect_bottlenecks(history: list[dict]) -> list[str]:
     # 音声ファイル0件
     zero_audio = sum(1 for r in recent if r.get("audio_count", 0) == 0)
     if zero_audio >= 2:
-        hints.append(f"[注意] 音声生成が {zero_audio} 回ゼロ件 → VOICEVOX/AivisSpeech の起動を確認")
+        hints.append(f"[注意] 音声生成が {zero_audio} 回ゼロ件 → AquesTalk/音声合成の状態を確認")
 
     return hints
 

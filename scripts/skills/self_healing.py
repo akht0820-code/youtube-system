@@ -144,7 +144,7 @@ def _fix_wait(seconds):
 
 
 def _fix_delete_wavs_rerun_tts(run_dir, error, ctx):
-    """WAVファイルを全削除してTTSを再実行"""
+    """WAVファイルを全削除（再実行は外側のリトライループが担当）"""
     deleted = 0
     for f in Path(run_dir).glob("*.wav"):
         try:
@@ -152,13 +152,7 @@ def _fix_delete_wavs_rerun_tts(run_dir, error, ctx):
             deleted += 1
         except Exception:
             pass
-    # TTS再実行
-    try:
-        from skills.skill_tts import run_tts
-        run_tts(run_dir)
-    except Exception:
-        pass
-    return f"WAV {deleted} 件削除 + TTS再実行"
+    return f"WAV {deleted} 件削除（リトライループで再実行される）"
 
 
 def _fix_delete_token_reauth(run_dir, error, ctx):
@@ -254,7 +248,7 @@ _ESCALATION = {
         ("5分待機", _fix_wait(300)),
     ],
     "EMPTY_WAV": [
-        ("WAV全削除+TTS再実行", _fix_delete_wavs_rerun_tts),
+        ("WAV全削除", _fix_delete_wavs_rerun_tts),
         ("クリーンアップ+待機", _fix_cleanup_and_wait),
     ],
     "SSL_EOF": [

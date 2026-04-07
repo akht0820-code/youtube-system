@@ -1,24 +1,31 @@
 # VOICEVOX音声合成モジュール
 
-import array
-import io
+import array as _array_mod
+import io as _io_mod
 import json
-import math
 import os
 import platform
 import subprocess
 import sys
 import time
-import wave
+import wave as _wave_mod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import requests
+from audio_processor import apply_pipeline, apply_prosody
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-VOICEVOX_URL = "http://localhost:50021"
+def _get_tts_base_url() -> str:
+    """TTS_PROVIDER に応じた接続先 URL を返す"""
+    provider = os.getenv("TTS_PROVIDER", "aquestalk").lower()
+    if provider == "aivis":
+        return os.getenv("AIVIS_URL", "http://localhost:10101")
+    return os.getenv("VOICEVOX_URL", "http://localhost:50021")
+
+VOICEVOX_URL = _get_tts_base_url()
 
 # VOICEVOXの一般的なインストール先候補（Windows）
 VOICEVOX_CANDIDATES = [
@@ -30,15 +37,48 @@ VOICEVOX_CANDIDATES = [
 # 読み方辞書ファイルのパス
 READING_DICT_PATH = Path(__file__).parent / "reading_dict.json"
 
-# 目標音量（dBFS）。全キャラの音量をこの値に統一する
-TARGET_DBFS = -20.0
+# ── キャラクター設定 ──────────────────────────────────────────
+# スピーカーIDと話速は .env で変更できる
+#
+# スピーカーIDを確認するには:
+#   python tts.py --list-speakers
+#
+# ── VOICEVOX 推奨スピーカー（バージョンによって変わることあり）──
+#   ID  名前
+#    0  四国めたん (ノーマル)   ← 霊夢向き（明るい女声）
+#    1  四国めたん (あまあま)
+#    2  四国めたん (ツンツン)
+#    3  四国めたん (セクシー)
+#    4  ずんだもん (ノーマル)   ← 魔理沙向き（元気な声）
+#    5  ずんだもん (あまあま)
+#   13  白上虎太郎 (ふつう)     ← 男声が欲しい場合
+#
+# ── AivisSpeech 推奨モデル（hub.aivis-project.com で配布）────
+#   霊夢向き: Anneli (ノーマル) / つくよみちゃん
+#   魔理沙向き: ずんだもん (ノーマル) / 春日部つむぎ
+#   ※ AivisSpeech ではスピーカーIDが VOICEVOX と異なるため要確認
+#
+# .env 設定例（AivisSpeech 使用時）:
+#   TTS_PROVIDER=aivis
+#   VOICEVOX_SPEAKER_霊夢=<AivisSpeechで確認したID>
+#   VOICEVOX_SPEAKER_魔理沙=<AivisSpeechで確認したID>
+#   TTS_SPEED_霊夢=1.05
+#   TTS_SPEED_魔理沙=1.10
 
-# キャラクター設定: スピーカーID と 話速（speedScale）
-# speedScale: 1.0=普通 / 1.2=早口 / 0.9=ゆっくり
-CHARACTER_SETTINGS = {
-    "霊夢": {"speaker_id": 2,  "speed": 1.05},  # 四国めたん: リアクション役・明るめ
-    "魔理沙": {"speaker_id": 3, "speed": 1.1},  # ずんだもん: 解説役・やや早口
-}
+def _build_character_settings() -> dict:
+    """キャラクター設定を .env の値で上書きして返す"""
+    return {
+        "霊夢": {
+            "speaker_id": int(os.getenv("VOICEVOX_SPEAKER_霊夢",  "2")),
+            "speed":     float(os.getenv("TTS_SPEED_霊夢",        "1.05")),
+        },
+        "魔理沙": {
+            "speaker_id": int(os.getenv("VOICEVOX_SPEAKER_魔理沙", "3")),
+            "speed":     float(os.getenv("TTS_SPEED_魔理沙",       "1.10")),
+        },
+    }
+
+CHARACTER_SETTINGS = _build_character_settings()
 
 
 # ── VOICEVOX起動管理 ─────────────────────────────────────
@@ -99,46 +139,6 @@ def ensure_voicevox() -> bool:
         return False
     print("VOICEVOXが起動していません。自動起動します...")
     return launch_voicevox()
-
-
-# ── 音量正規化 ───────────────────────────────────────────
-
-def normalize_wav(wav_bytes: bytes, target_dbfs: float = TARGET_DBFS) -> bytes:
-    """WAVデータの音量を target_dbfs に統一する（標準ライブラリのみ使用）"""
-    with wave.open(io.BytesIO(wav_bytes), "rb") as w:
-        n_channels = w.getnchannels()
-        sampwidth = w.getsampwidth()
-        framerate = w.getframerate()
-        frames = w.readframes(w.getnframes())
-
-    # 16bit PCMとして読み込む
-    samples = array.array("h", frames)
-    if not samples:
-        return wav_bytes
-
-    # 現在のRMSを計算
-    rms = math.sqrt(sum(s * s for s in samples) / len(samples))
-    if rms == 0:
-        return wav_bytes
-
-    # 目標RMSに合わせてゲインを計算
-    target_rms = 32767 * (10 ** (target_dbfs / 20))
-    gain = target_rms / rms
-
-    # クリッピング防止付きでスケーリング
-    normalized = array.array(
-        "h", [max(-32768, min(32767, int(s * gain))) for s in samples]
-    )
-
-    # WAVとして書き直す
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as w:
-        w.setnchannels(n_channels)
-        w.setsampwidth(sampwidth)
-        w.setframerate(framerate)
-        w.writeframes(normalized.tobytes())
-
-    return buf.getvalue()
 
 
 # ── 読み方辞書 ───────────────────────────────────────────
@@ -266,72 +266,76 @@ def list_speakers():
 
 # ── 音声合成 ─────────────────────────────────────────────
 
+# TTSクライアントはプロバイダ設定に応じて初期化（起動時に1回だけ生成）
+def _get_tts_client():
+    from providers import get_tts_client
+    return get_tts_client()
+
+
 def synthesize(text: str, speaker_id: int, speed: float) -> bytes:
-    """テキストをWAVバイナリに変換する"""
-    query_res = requests.post(
-        f"{VOICEVOX_URL}/audio_query",
-        params={"text": text, "speaker": speaker_id},
-    )
-    query_res.raise_for_status()
-    query = query_res.json()
-
-    # キャラクターごとの話速を適用
-    query["speedScale"] = speed
-    query["pauseLength"] = 0.3
-    query["pauseLengthScale"] = 1.0
-
-    synth_res = requests.post(
-        f"{VOICEVOX_URL}/synthesis",
-        params={"speaker": speaker_id},
-        data=json.dumps(query),
-        headers={"Content-Type": "application/json"},
-    )
-    synth_res.raise_for_status()
-    return synth_res.content
+    """テキストをWAVバイナリに変換する（TTSプロバイダに委譲）"""
+    return _get_tts_client().synthesize(text, speaker_id, speed)
 
 
 def generate_audio_from_script(script: dict, output_dir: Path) -> list[Path]:
     """
     台本JSONから全セリフの音声を並列生成して保存する。
 
-    VOICEVOX の synthesis エンドポイントはサーバー側で逐次処理されるが、
-    audio_query・normalize_wav・ファイル書き込みは並列化できる。
-    TTS_WORKERS=3 が概ねバランスの良い値（増やしすぎると VOICEVOX が詰まる）。
+    TTS_PROVIDER=aquestalk の場合は AquesTalk1 (霊夢=f1/魔理沙=f2) を使う。
+    それ以外は VOICEVOX / AivisSpeech を使う。
     """
+    provider = os.getenv("TTS_PROVIDER", "aquestalk").lower()
+
+    # AquesTalk1 プロバイダー分岐
+    if provider == "aquestalk":
+        return _generate_audio_aquestalk(script, output_dir)
+
     if not ensure_voicevox():
         raise ConnectionError("VOICEVOXを起動できませんでした。")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     max_workers = int(os.getenv("TTS_WORKERS", "3"))
 
-    # セリフリストを (line_num, character, text) として収集
-    all_lines: list[tuple[int, str, str]] = []
+    # セリフリストを (line_num, character, synthesis_text, prosody) として収集
+    # synthesis_text が設定されている場合はそちらを優先（発音補正済み）
+    # text は字幕表示用に残しているため変更しない
+    all_lines: list[tuple[int, str, str, dict | None]] = []
     line_num = 1
     for section in script.get("sections", []):
         for line in section.get("lines", []):
-            all_lines.append((line_num, line["character"], line["text"]))
+            # synthesis_text があれば使う（pronunciation.py が設定）
+            synth_text = line.get("synthesis_text") or line["text"]
+            prosody = line.get("prosody")
+            all_lines.append((line_num, line["character"], synth_text, prosody))
             line_num += 1
 
     total = len(all_lines)
     print(f"  {total} 件の音声を並列生成します（workers={max_workers}）")
 
-    def process_one(args: tuple[int, str, str]) -> Path | None:
-        num, character, text = args
+    def process_one(args: tuple[int, str, str, dict | None]) -> Path | None:
+        num, character, text, prosody = args
         settings = CHARACTER_SETTINGS.get(character)
         if settings is None:
-            print(f"  ⚠ [{num:03d}] 「{character}」の設定が未定義。スキップします。")
+            print(f"  [!] [{num:03d}] 「{character}」の設定が未定義。スキップします。")
             return None
 
         output_path = output_dir / f"{num:03d}_{character}.wav"
         try:
-            wav_data = synthesize(text, settings["speaker_id"], settings["speed"])
-            wav_data = normalize_wav(wav_data)
+            # プロソディのspeedをVOICEVOX speedScaleに反映
+            speed = settings["speed"]
+            if prosody and prosody.get("speed", 1.0) != 1.0:
+                speed = speed * prosody["speed"]
+            wav_data = synthesize(text, settings["speaker_id"], speed)
+            wav_data = apply_pipeline(wav_data, character)   # 後処理パイプライン
+            # プロソディのピッチ・音量を適用
+            if prosody:
+                wav_data = apply_prosody(wav_data, prosody)
             output_path.write_bytes(wav_data)
             preview = text[:20] + ("..." if len(text) > 20 else "")
             print(f"  [{num:03d}] {character}: {preview}")
             return output_path
         except requests.HTTPError as e:
-            print(f"  ⚠ [{num:03d}] {character} の音声生成に失敗: {e}")
+            print(f"  [!] [{num:03d}] {character} の音声生成に失敗: {e}")
             return None
 
     saved_files: list[Path] = []
@@ -343,6 +347,120 @@ def generate_audio_from_script(script: dict, output_dir: Path) -> list[Path]:
                 saved_files.append(result)
 
     # ファイル名順（= セリフ順）にソートして返す
+    return sorted(saved_files)
+
+
+def _mix_wav_bytes(wav1: bytes, wav2: bytes) -> bytes:
+    """2つの16bit mono WAVバイト列を重ねてミックスして返す"""
+    def read_samples(data: bytes):
+        with _wave_mod.open(_io_mod.BytesIO(data)) as wf:
+            params = wf.getparams()
+            raw = wf.readframes(wf.getnframes())
+        return params, _array_mod.array("h", raw)
+
+    params, s1 = read_samples(wav1)
+    _,      s2 = read_samples(wav2)
+
+    # 短い方をゼロパディングして長さを揃える
+    max_len = max(len(s1), len(s2))
+    s1.extend([0] * (max_len - len(s1)))
+    s2.extend([0] * (max_len - len(s2)))
+
+    # 各チャンネル0.65倍で加算してクリッピング防止
+    mixed = _array_mod.array("h", [
+        max(-32768, min(32767, int(a * 0.65 + b * 0.65)))
+        for a, b in zip(s1, s2)
+    ])
+
+    buf = _io_mod.BytesIO()
+    with _wave_mod.open(buf, "wb") as wf:
+        wf.setparams(params)
+        wf.writeframes(mixed.tobytes())
+    return buf.getvalue()
+
+
+def _generate_audio_aquestalk(script: dict, output_dir: Path) -> list[Path]:
+    """AquesTalk1 (霊夢=f1/魔理沙=f2) で台本全セリフの音声を生成する（逐次処理）"""
+    from tts_aquestalk import synthesize as aq_synthesize, _SPEED_MAP
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    all_lines: list[tuple[int, str, str, dict | None]] = []
+    line_num = 1
+    for section in script.get("sections", []):
+        for line in section.get("lines", []):
+            synth_text = line.get("synthesis_text") or line["text"]
+            prosody = line.get("prosody")  # {"speed": 1.08, "pitch": 1.5, "volume": 2.0}
+            all_lines.append((line_num, line["character"], synth_text, prosody))
+            line_num += 1
+
+    total = len(all_lines)
+    print(f"  {total} 件の音声を AquesTalk1 で生成します（逐次処理）")
+
+    saved_files: list[Path] = []
+    for num, character, text, prosody in all_lines:
+        output_path = output_dir / f"{num:03d}_{character}.wav"
+        if output_path.exists():
+            # キャッシュ済みはスキップ
+            saved_files.append(output_path)
+            continue
+
+        # 両者ハモり: 霊夢・魔理沙を同じ速さ(118)で生成してWAVミックス（プロソディ無効）
+        if character == "両者":
+            try:
+                tmp_r = output_dir / f"{num:03d}_両者_r_tmp.wav"
+                tmp_m = output_dir / f"{num:03d}_両者_m_tmp.wav"
+                aq_synthesize(text, "霊夢",   tmp_r, speed=118)
+                aq_synthesize(text, "魔理沙", tmp_m, speed=118)
+                mixed = _mix_wav_bytes(tmp_r.read_bytes(), tmp_m.read_bytes())
+                output_path.write_bytes(mixed)
+                tmp_r.unlink(missing_ok=True)
+                tmp_m.unlink(missing_ok=True)
+                preview = text[:20] + ("..." if len(text) > 20 else "")
+                print(f"  [{num:03d}] 両者(ハモり): {preview}")
+                saved_files.append(output_path)
+            except Exception as e:
+                print(f"  [!] [{num:03d}] 両者ハモり生成失敗: {e}")
+            continue
+
+        # プロソディ: speed変動を計算（AquesTalkのspeedパラメータに反映）
+        line_speed = None
+        if prosody and prosody.get("speed", 1.0) != 1.0:
+            voice_key = "reimu" if character == "霊夢" else "marisa"
+            base_speed = _SPEED_MAP.get(voice_key, 100)
+            line_speed = int(base_speed * prosody["speed"])
+
+        try:
+            aq_synthesize(text, character, output_path, speed=line_speed)
+            # 後処理パイプライン（WAVバイト読み取り→処理→上書き）
+            try:
+                wav_data = apply_pipeline(output_path.read_bytes(), character)
+                # プロソディのピッチ・音量を適用（speed以外）
+                if prosody:
+                    wav_data = apply_prosody(wav_data, prosody)
+                output_path.write_bytes(wav_data)
+            except Exception:
+                pass  # パイプライン失敗は無視して生成済み WAV をそのまま使う
+            preview = text[:20] + ("..." if len(text) > 20 else "")
+            prosody_tag = ""
+            if prosody:
+                parts = []
+                if prosody.get("speed", 1.0) != 1.0:
+                    parts.append(f"spd={prosody['speed']}")
+                if abs(prosody.get("pitch", 0)) >= 0.1:
+                    parts.append(f"pit={prosody['pitch']:+.1f}")
+                if abs(prosody.get("volume", 0)) >= 0.5:
+                    parts.append(f"vol={prosody['volume']:+.1f}")
+                if parts:
+                    prosody_tag = f" [{','.join(parts)}]"
+            print(f"  [{num:03d}] {character}: {preview}{prosody_tag}")
+            saved_files.append(output_path)
+        except Exception as e:
+            msg = f"  [!] [{num:03d}] {character} の音声生成に失敗: {e}"
+            try:
+                print(msg)
+            except UnicodeEncodeError:
+                print(msg.encode("cp932", errors="replace").decode("cp932"))
+
     return sorted(saved_files)
 
 
