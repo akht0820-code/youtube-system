@@ -1,183 +1,158 @@
-# ゆっくり解説動画 台本自動生成システム
+# ゆっくり解説動画 台本自動生成システム — オーケストレーター
+#
+# 各フェーズは scripts/skills/ の独立スキルとして実行される。
+# このファイルはスキルの呼び出し順序を制御するだけの薄いオーケストレーター。
 
 import json
-import random
 import re
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-from google import genai
-
-from characters import get_character_names
-from prompts import (
-    build_description_prompt,
-    build_script_prompt,
-    build_script_prompt_with_suggestions,
-    build_structure_prompt,
-    build_tags_prompt,
-    build_title_prompt,
-)
-from analyzer import load_suggestions
-import model_config
 from notifier import notify_error, notify_start, notify_success
-from secrets import get_secret
-from thumbnail_maker import make_thumbnail
-from tts import ensure_voicevox, generate_audio_from_script
-from video_builder import build_video
-from youtube_uploader import _parse_publish_at, get_video_url, upload_video
-
-try:
-    client = genai.Client(api_key=get_secret("GEMINI_API_KEY"))
-except RuntimeError as e:
-    print(f"エラー: {e}")
-    sys.exit(1)
+from skills.self_healing import run_phase_with_healing
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
 
-def extract_json(text: str) -> dict:
-    """Geminiの応答からJSONを抽出してパースする"""
-    # コードブロックを除去
-    text = re.sub(r"```json\s*", "", text)
-    text = re.sub(r"```\s*", "", text)
-    text = text.strip()
-    return json.loads(text)
-
-
-def generate_title(theme: str) -> str:
-    """テーマからYouTubeタイトルを生成する"""
-    print("タイトルを生成しています...")
-    prompt = build_title_prompt(theme)
-    response = client.models.generate_content(model=model_config.STANDARD, contents=prompt)
-    title = response.text.strip().strip("「」")
-    print(f"  → {title}")
-    return title
-
-
-def generate_structure(theme: str) -> dict:
-    """ステップ1: テーマから動画構成を生成"""
-    print(f"構成を考えています...")
-    prompt = build_structure_prompt(theme)
-    response = client.models.generate_content(model=model_config.STANDARD, contents=prompt)
-    structure = extract_json(response.text)
-    print(f"  → {len(structure.get('sections', []))} セクション構成が決まりました")
-    return structure
-
-
-def fix_consecutive_speakers(script: dict) -> tuple[dict, int]:
-    """同じキャラクターが連続して発言している箇所を修正する"""
-    all_names = get_character_names()
-    fixed_count = 0
-
-    for section in script.get("sections", []):
-        lines = section.get("lines", [])
-        i = 1
-        while i < len(lines):
-            if lines[i]["character"] == lines[i - 1]["character"]:
-                # 前後で使われていないキャラを選んで差し込む
-                used = {lines[i - 1]["character"]}
-                if i + 1 < len(lines):
-                    used.add(lines[i + 1]["character"])
-                candidates = [n for n in all_names if n not in used]
-                if not candidates:
-                    candidates = [n for n in all_names if n != lines[i - 1]["character"]]
-
-                # 直後の行のキャラを別のキャラに差し替える
-                lines[i]["character"] = random.choice(candidates)
-                fixed_count += 1
-            i += 1
-
-    return script, fixed_count
-
-
-def generate_script(theme: str, structure: dict) -> dict:
-    """ステップ2: 構成から台本を生成（改善提案があれば反映）"""
-    print("台本を生成しています...")
-    suggestions = load_suggestions()
-    if suggestions.get("suggestions"):
-        print(f"  → 改善提案 {len(suggestions['suggestions'])} 件を反映します")
-        prompt = build_script_prompt_with_suggestions(theme, structure, suggestions)
-    else:
-        prompt = build_script_prompt(theme, structure)
-    response = client.models.generate_content(model=model_config.QUALITY, contents=prompt)
-    script = extract_json(response.text)
-
-    total_lines = sum(len(s.get("lines", [])) for s in script.get("sections", []))
-    print(f"  → {total_lines} 行の台本が生成されました")
-
-    # 連続発言の修正
-    script, fixed_count = fix_consecutive_speakers(script)
-    if fixed_count > 0:
-        print(f"  → 連続発言を {fixed_count} 箇所修正しました")
-
-    return script
-
-
-def save_script(theme: str, script: dict) -> Path:
-    """台本をJSONファイルとして保存"""
-    OUTPUT_DIR.mkdir(exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    # ファイル名に使えない文字を除去
-    safe_theme = re.sub(r'[\\/:*?"<>|]', "", theme)[:30]
-    filename = f"{timestamp}_{safe_theme}.json"
-
-    output_path = OUTPUT_DIR / filename
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(script, f, ensure_ascii=False, indent=2)
-
-    return output_path
-
-
-def generate_description(theme: str, title: str, sections: list) -> str:
-    """YouTube説明文を生成する"""
-    print("説明文を生成しています...")
-    prompt = build_description_prompt(theme, title, sections)
-    response = client.models.generate_content(model=model_config.SIMPLE, contents=prompt)
-    return response.text.strip()
-
-
-def generate_tags(theme: str, title: str) -> list[str]:
-    """YouTubeタグを生成する"""
-    print("タグを生成しています...")
-    prompt = build_tags_prompt(theme, title)
-    response = client.models.generate_content(model=model_config.SIMPLE, contents=prompt)
-    return extract_json(response.text)
-
-
 def _pick_theme_from_file() -> str:
-    """themes.txt からランダムにテーマを1つ選ぶ"""
+    """themes.txt からランダムにテーマを1つ選ぶ（使用済みテーマを除外）"""
+    import random
     themes_path = Path(__file__).parent.parent / "themes.txt"
     if not themes_path.exists():
         raise FileNotFoundError("themes.txt が見つかりません")
     lines = [l.strip() for l in themes_path.read_text(encoding="utf-8").splitlines() if l.strip()]
     if not lines:
         raise ValueError("themes.txt にテーマが入っていません")
-    import random
-    return random.choice(lines)
+
+    used: set[str] = set()
+    try:
+        for d in OUTPUT_DIR.iterdir():
+            if d.is_dir() and re.match(r"\d{8}_\d{6}_", d.name):
+                used.add(d.name[16:])
+    except Exception:
+        pass
+
+    unused = [t for t in lines if re.sub(r'[\\/:*?"<>|]', "", t)[:30] not in used]
+    candidates = unused if unused else lines
+    if unused and len(unused) < len(lines):
+        print(f"[テーマ] 残り未使用: {len(unused)}/{len(lines)} 件")
+    return random.choice(candidates)
+
+
+def _create_run_dir(theme: str) -> tuple[Path, str, str]:
+    """実行ディレクトリを作成し、(run_dir, run_id, safe_theme) を返す"""
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_theme = re.sub(r'[\\/:*?"<>|]', "", theme)[:30]
+    run_dir = OUTPUT_DIR / f"{run_id}_{safe_theme}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir, run_id, safe_theme
+
+
+def _find_resumable_run() -> Path | None:
+    """当日の最新の未完了（in_progress / failed）run_dir を返す。なければ None"""
+    if not OUTPUT_DIR.exists():
+        return None
+    today_prefix = datetime.now().strftime("%Y%m%d")
+    candidates = []
+    for d in OUTPUT_DIR.iterdir():
+        if not d.is_dir() or not re.match(r"\d{8}_\d{6}_", d.name):
+            continue
+        # 当日のrun_dirのみ対象
+        if not d.name.startswith(today_prefix):
+            continue
+        pj = d / "pipeline.json"
+        if not pj.exists():
+            continue
+        try:
+            m = json.loads(pj.read_text(encoding="utf-8"))
+            if m.get("status") in ("in_progress", "failed"):
+                candidates.append(d)
+        except Exception:
+            continue
+    if not candidates:
+        return None
+    # 最新のディレクトリ名（タイムスタンプ順）を返す
+    candidates.sort(key=lambda p: p.name, reverse=True)
+    return candidates[0]
+
+
+def _phase_completed(manifest: dict, phase: str) -> bool:
+    """指定フェーズが完了済みかどうか"""
+    return manifest.get("phases", {}).get(phase, {}).get("status") == "completed"
 
 
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--auto",          action="store_true", help="自動実行モード（対話なし・自動アップロード）")
+    parser.add_argument("--auto",          action="store_true", help="自動実行モード")
     parser.add_argument("--theme",         type=str, default="", help="テーマを直接指定")
-    parser.add_argument("--publish-hours", type=int, default=0,  help="N時間後に予約投稿（0=即公開）")
+    parser.add_argument("--publish-hours", type=int, default=0,  help="N時間後に予約投稿")
+    parser.add_argument("--publish-time",  type=str, default="", help="指定時刻に予約投稿（例: 18:00）")
     parser.add_argument("--no-upload",     action="store_true",  help="アップロードをスキップ")
+    parser.add_argument("--script-file",   type=str, default="", help="外部台本JSONファイルのパス")
+    parser.add_argument("--resume",        action="store_true",  help="最新の失敗/未完了run_dirから再開")
     args = parser.parse_args()
+
+    # ── 1日1本ガード ──────────────────────────────────────
+    _lock_path = Path(__file__).parent.parent / "logs" / "last_upload_date.txt"
+    if args.auto:
+        _today = datetime.now().strftime("%Y-%m-%d")
+        if _lock_path.exists():
+            _lock_content = _lock_path.read_text(encoding="utf-8").strip()
+            _lock_date = _lock_content.split("|", 1)[0]
+            if _lock_date == _today:
+                print(f"[スキップ] 本日({_today})は既に動画を投稿済みです。")
+                sys.exit(0)
 
     print("=== ゆっくり解説動画 台本生成システム ===\n")
 
-    if args.theme:
-        theme = args.theme
-    elif args.auto:
-        theme = _pick_theme_from_file()
-        print(f"本日のテーマ: 「{theme}」")
-    else:
-        theme = input("テーマを入力してください: ").strip()
+    # ── --resume: 最新の失敗/未完了run_dirから再開 ────────
+    _resuming = False
+    _resume_manifest = None
+    if args.resume:
+        _resume_dir = _find_resumable_run()
+        if _resume_dir:
+            from skills._common import load_manifest
+            _resume_manifest = load_manifest(_resume_dir)
+            print(f"[再開モード] 未完了のrun_dirを検出: {_resume_dir.name}")
+            # 完了済みフェーズを表示
+            for _ph, _info in _resume_manifest.get("phases", {}).items():
+                if _info.get("status") == "completed":
+                    print(f"  スキップ: {_ph} (完了済み)")
+            _resuming = True
+        else:
+            print("[再開モード] 未完了のrun_dirが見つかりません → 新規実行します")
+
+    # ── テーマ決定 ────────────────────────────────────────
+    _external_script = None
+    if _resuming:
+        theme = _resume_manifest["theme"]
+    elif args.script_file:
+        try:
+            with open(args.script_file, encoding="utf-8") as f:
+                _external_script = json.load(f)
+            print(f"外部台本JSONを読み込みました: {args.script_file}")
+        except Exception as e:
+            print(f"[エラー] 外部台本JSON読み込み失敗: {e} → AI生成にフォールバック")
+            _external_script = None
+
+    if not _resuming:
+        if _external_script:
+            theme = _external_script.get("title", "外部台本")
+        elif args.theme:
+            theme = args.theme
+        elif args.auto:
+            try:
+                theme = _pick_theme_from_file()
+            except Exception as e:
+                notify_error("テーマ取得", e)
+                print(f"エラー: {e}")
+                sys.exit(1)
+            print(f"本日のテーマ: 「{theme}」")
+        else:
+            theme = input("テーマを入力してください: ").strip()
 
     if not theme:
         print("エラー: テーマが入力されていません")
@@ -186,162 +161,276 @@ def main():
     print(f"\nテーマ: 「{theme}」\n")
     notify_start(theme)
 
-    youtube_title  = ""
-    output_path    = None
-    thumbnail_path = None
-    video_path     = None
-    url            = ""
-    _t0 = time.perf_counter()
+    # ── 起動時メモリチェック（不要プロセスを自動解放）──
+    try:
+        from skills._common import ensure_memory
+        ensure_memory("起動時")
+    except Exception as e:
+        print(f"  [警告] メモリチェック失敗（無視して続行）: {e}")
 
+    # ── 起動時クリーンアップ（temp files・古いWAVディレクトリ・失敗パイプライン）──
+    # 失敗しても動画生成は必ず続行する（再開モード時はクリーンアップしない）
+    if not _resuming:
+        try:
+            from skills.skill_cache_cleanup import run_cache_cleanup
+            _cleanup = run_cache_cleanup()  # run_dir省略 = output/全体対象
+            _cleanup_total = sum(len(v) for v in _cleanup.values())
+            if _cleanup_total:
+                print(f"  [起動時クリーンアップ] {_cleanup_total} 件削除しました")
+        except Exception as e:
+            print(f"  [警告] 起動時クリーンアップ失敗（無視して続行）: {e}")
+
+    # ── 実行ディレクトリ作成 or 再開 + パイプライン初期化 ─────────
+    if _resuming:
+        run_dir = _resume_dir
+        manifest = _resume_manifest
+        run_id = manifest["run_id"]
+    else:
+        run_dir, run_id, safe_theme = _create_run_dir(theme)
+        from skills._common import create_manifest
+        manifest = create_manifest(run_dir, theme, run_id)
+    print(f"実行ディレクトリ: {run_dir}\n")
+
+    _t0 = time.perf_counter()
     def _elapsed():
         return f"{time.perf_counter() - _t0:.0f}s"
 
-    # ── フェーズ1: タイトル + 構成を並列生成 ─────────────
-    # 互いに独立しているので同時に投げる
-    print("【フェーズ1】タイトル・構成を並列生成しています...")
-    structure = None
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        ft = ex.submit(generate_title, theme)
-        fs = ex.submit(generate_structure, theme)
+    # ── フェーズ1+2: 台本生成 ─────────────────────────────
+    if _phase_completed(manifest, "script_gen"):
+        # 再開時: 完了済み台本の文字数を検証（不良台本での無駄走り防止）
+        _script_files = list(run_dir.glob("*.json"))
+        _script_path = next((f for f in _script_files if f.name.startswith("2026") and f.name.endswith(".json") and "metadata" not in f.name and "pipeline" not in f.name and "raw_" not in f.name and "preflight" not in f.name), None)
+        if _script_path:
+            try:
+                import json as _j
+                _sc = _j.loads(_script_path.read_text(encoding="utf-8"))
+                _chars = sum(len(l.get("text","")) for s in _sc.get("sections",[]) for l in s.get("lines",[]))
+                if _chars < 3000:
+                    print(f"[再開モード] 台本が致命的に短い ({_chars}文字) → フェーズ1からやり直します")
+                    from skills._common import update_phase
+                    update_phase(run_dir, "script_gen", "failed", error=f"文字数不足: {_chars}文字")
+                    # 後続フェーズもリセット
+                    for _ph in ["metadata", "pronunciation", "se_assign", "prosody", "tts", "video_build", "thumbnail", "self_review", "upload"]:
+                        try:
+                            update_phase(run_dir, _ph, "pending")
+                        except Exception:
+                            pass
+                    manifest = json.loads((run_dir / "pipeline.json").read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        if _phase_completed(manifest, "script_gen"):
+            print("【フェーズ1+2】台本生成 → スキップ（完了済み）")
+    else:
+        print("【フェーズ1+2】台本を生成しています...")
+        from skills.skill_script_gen import run_script_gen
+        sg_result = run_script_gen(run_dir, theme, external_script=_external_script)
+        if not sg_result:
+            print("[致命的エラー] 台本生成に失敗しました。処理を中断します。")
+            sys.exit(1)
+        print(f"  → フェーズ1+2完了 ({_elapsed()})\n")
 
-        try:
-            youtube_title = ft.result()
-        except Exception as e:
-            notify_error("タイトル生成", e)
-            print(f"[エラー] タイトル生成: {e}")
-            youtube_title = theme
+    # ── フェーズ3: メタデータ生成 ─────────────────────────
+    if _phase_completed(manifest, "metadata"):
+        print("【フェーズ3】メタデータ生成 → スキップ（完了済み）")
+    else:
+        print("【フェーズ3】メタデータを生成しています...")
+        from skills.skill_metadata import run_metadata
+        run_metadata(run_dir)
+        print(f"  → フェーズ3完了 ({_elapsed()})\n")
 
+    # ── 発音補正 ──────────────────────────────────────────
+    if _phase_completed(manifest, "pronunciation"):
+        print("【発音補正】→ スキップ（完了済み）")
+    else:
+        print("【発音補正】静的辞書＋AI読みチェックを実行しています...")
+        from skills.skill_pronunciation import run_pronunciation
+        run_pronunciation(run_dir)
+        print(f"  → 発音補正完了 ({_elapsed()})\n")
+
+    # ── SE（効果音）割り当て ─────────────────────────────
+    if _phase_completed(manifest, "se_assign"):
+        print("【SE割り当て】→ スキップ（完了済み）")
+    else:
+        print("【SE割り当て】Gemini ProがSEを判定しています...")
+        from skills.skill_se_assign import run_se_assign
+        se_result = run_se_assign(run_dir)
+        print(f"  → SE割り当て完了: {se_result.get('se_count', 0)}件 ({_elapsed()})\n")
+
+    # ── プロソディ（抑揚）割り当て ──────────────────────
+    if _phase_completed(manifest, "prosody"):
+        print("【プロソディ】→ スキップ（完了済み）")
+    else:
+        print("【プロソディ】Gemini Proが抑揚を判定しています...")
+        from skills.skill_prosody import run_prosody
+        prosody_result = run_prosody(run_dir)
+        print(f"  → プロソディ完了: {prosody_result.get('prosody_count', 0)}件 ({_elapsed()})\n")
+
+    # ── キャッシュクリーンアップ（TTS前: 発音変更で古いWAVを無効化）──
+    from skills.skill_cache_cleanup import run_cache_cleanup
+    cleanup_result = run_cache_cleanup(run_dir=run_dir)
+    if cleanup_result.get("stale_wav"):
+        print(f"  [キャッシュ] 発音変更により {len(cleanup_result['stale_wav'])} WAVを削除しました")
+
+    # ── フェーズ4: 音声合成（自己修復付き）─────────────────
+    if _phase_completed(manifest, "tts"):
+        print("【フェーズ4】音声合成 → スキップ（完了済み）")
+    else:
+        print("【フェーズ4】音声を合成しています...")
+        from skills.skill_tts import run_tts
+        run_phase_with_healing("tts", run_tts, run_dir)
+        print(f"  → フェーズ4完了 ({_elapsed()})\n")
+
+    # ── フェーズ5: 動画生成（自己修復付き）─────────────────
+    if _phase_completed(manifest, "video_build"):
+        print("【フェーズ5】動画生成 → スキップ（完了済み）")
+    else:
+        print("【フェーズ5】動画を生成しています...")
         try:
-            structure = fs.result()
-        except Exception as e:
-            notify_error("構成生成", e)
-            print(f"[エラー] 構成生成: {e} → 処理を中断します")
+            ensure_memory("video_build前")
+        except Exception:
+            pass
+        from skills.skill_video_build import run_video_build
+        run_phase_with_healing("video_build", run_video_build, run_dir)
+        print(f"  → フェーズ5完了 ({_elapsed()})\n")
+
+    # ── フェーズ6: サムネイル生成 ─────────────────────────
+    if _phase_completed(manifest, "thumbnail"):
+        print("【フェーズ6】サムネイル生成 → スキップ（完了済み）")
+    else:
+        print("【フェーズ6】サムネイルを生成しています...")
+        from skills.skill_thumbnail import run_thumbnail
+        run_thumbnail(run_dir)
+        print(f"  → フェーズ6完了 ({_elapsed()})\n")
+
+    # ── 自己レビュー ─────────────────────────────────────
+    from skills.skill_self_review import run_self_review
+    review = run_self_review(run_dir)
+
+    if review.get("needs_repair"):
+        # キャラクターロール逸脱を自動修復 → TTS以降を再実行
+        print("[自動修復] 台本修復済み → 発音補正・SE・プロソディ・音声・動画・サムネを再生成します...")
+        from skills.skill_pronunciation import run_pronunciation
+        from skills.skill_se_assign import run_se_assign
+        from skills.skill_prosody import run_prosody
+        from skills.skill_tts import run_tts
+        from skills.skill_video_build import run_video_build
+        from skills.skill_thumbnail import run_thumbnail
+        run_pronunciation(run_dir)
+        run_se_assign(run_dir)
+        run_prosody(run_dir)
+        run_phase_with_healing("tts(再生成)", run_tts, run_dir)
+        run_phase_with_healing("video_build(再生成)", run_video_build, run_dir)
+        run_thumbnail(run_dir)
+        print(f"  → 再生成完了 ({_elapsed()})\n")
+
+    elif not review["passed"] and review.get("errors", 0) > 0:
+        print(f"[致命的] 自己レビューでエラー {review['errors']} 件 → アップロードをブロックします")
+        notify_error("自己レビュー不合格 → アップロード中止", ValueError(
+            f"エラー{review['errors']}件, 警告{review['warnings']}件。手動確認が必要です。"
+        ))
+        sys.exit(1)
+
+    elif not review["passed"]:
+        # 警告のみ（エラーなし）の場合は続行
+        print(f"[警告] 自己レビューで警告 {review['warnings']} 件（エラーなし → 続行）")
+
+    # ── アップロード前の最終安全チェック ────────────────────
+    # manifestを再読込（video_build完了後のoutputsを取得するため）
+    from skills._common import load_manifest
+    manifest = load_manifest(run_dir)
+    _mp4 = None
+    _vb_outputs = manifest["phases"]["video_build"].get("outputs", [])
+    for _out in _vb_outputs:
+        if _out.endswith(".mp4"):
+            _candidate = run_dir.parent / _out if not Path(_out).is_absolute() else Path(_out)
+            if _candidate.exists():
+                _mp4 = _candidate
+                break
+    if _mp4 and args.auto:
+        import subprocess as _sp
+        try:
+            from imageio_ffmpeg import get_ffmpeg_exe as _get_ffmpeg_exe
+            _ffmpeg_path = _get_ffmpeg_exe()
+            _ffprobe_path = _ffmpeg_path.replace("ffmpeg", "ffprobe")
+            _probe = _sp.run(
+                [_ffprobe_path,
+                 "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(_mp4)],
+                capture_output=True, text=True, timeout=10,
+            )
+            _dur = float(_probe.stdout.strip()) if _probe.stdout.strip() else 0
+        except Exception:
+            # ffprobeが使えない場合はファイルサイズで判定
+            _dur = _mp4.stat().st_size / (200 * 1024)  # 概算: 200KB/秒
+        _MIN_DURATION = 180  # 最低3分
+        if _dur < _MIN_DURATION:
+            print(f"[致命的] 動画が短すぎます: {_dur:.0f}秒（最低{_MIN_DURATION}秒）→ アップロード中止")
+            notify_error("動画尺不足 → アップロード中止", ValueError(
+                f"動画 {_dur:.0f}秒 < 最低{_MIN_DURATION}秒。台本生成に失敗した可能性があります。"
+            ))
             sys.exit(1)
 
-    print(f"  → フェーズ1完了 ({_elapsed()})\n")
-
-    # ── フェーズ2: 台本生成（構成が必要なので単独） ──────
-    try:
-        script = generate_script(theme, structure)
-    except Exception as e:
-        notify_error("台本生成", e)
-        print(f"[エラー] 台本生成: {e} → 処理を中断します")
-        sys.exit(1)
-
-    print(f"  → フェーズ2完了 ({_elapsed()})\n")
-
-    # 台本を先に保存してパス情報を確定させる
-    try:
-        output_path = save_script(theme, script)
-        print(f"台本を保存しました: {output_path}")
-        safe_theme = re.sub(r'[\\/:*?"<>|]', "", theme)[:30]
-        timestamp  = output_path.stem.split("_")[0]
-    except Exception as e:
-        notify_error("台本保存", e)
-        print(f"[エラー] 台本保存: {e} → 処理を中断します")
-        sys.exit(1)
-
-    # ── フェーズ3: 説明文 + タグ + サムネイルを並列生成 ──
-    # すべて台本・タイトルが揃えば互いに独立して生成できる
-    print("\n【フェーズ3】説明文・タグ・サムネイルを並列生成しています...")
-    sections       = [{"title": s["section"]} for s in script.get("sections", [])]
-    thumbnail_path = OUTPUT_DIR / f"{timestamp}_{safe_theme}_thumbnail.png"
-    description    = theme
-    tags           = ["ゆっくり解説", "健康"]
-
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        fd = ex.submit(generate_description, theme, youtube_title, sections)
-        fg = ex.submit(generate_tags, theme, youtube_title)
-        fth = ex.submit(make_thumbnail, youtube_title, thumbnail_path)
-
-        try:
-            description = fd.result()
-        except Exception as e:
-            notify_error("説明文生成", e)
-            print(f"[エラー] 説明文生成: {e} → 空欄で続行")
-
-        try:
-            tags = fg.result()
-        except Exception as e:
-            notify_error("タグ生成", e)
-            print(f"[エラー] タグ生成: {e} → デフォルトタグで続行")
-
-        try:
-            fth.result()
-            print(f"サムネイルを保存しました: {thumbnail_path}")
-        except Exception as e:
-            notify_error("サムネイル生成", e)
-            print(f"[エラー] サムネイル生成: {e} → スキップして続行")
-            thumbnail_path = None
-
-    print(f"  → フェーズ3完了 ({_elapsed()})\n")
-
-    # ── フェーズ4: 音声合成 ───────────────────────────────
-    print("【フェーズ4】音声合成・動画生成を開始します...")
-    try:
-        audio_dir  = OUTPUT_DIR / f"{timestamp}_{safe_theme}"
-        video_path = output_path.with_suffix(".mp4")
-        print(f"音声を生成しています → {audio_dir}")
-        if ensure_voicevox():
-            saved = generate_audio_from_script(script, audio_dir)
-            print(f"\n{len(saved)} 件の音声ファイルを保存しました ({_elapsed()})\n")
-            build_video(script, audio_dir, video_path)
-            print(f"  → フェーズ4完了 ({_elapsed()})\n")
-        else:
-            raise RuntimeError("VOICEVOXに接続できませんでした")
-    except Exception as e:
-        notify_error("音声・動画生成", e)
-        print(f"[エラー] 音声・動画生成: {e} → アップロードをスキップします")
-        video_path = None
-
-    # ── ステップ7: YouTubeアップロード ───────────────────
-    if args.auto and not args.no_upload:
-        do_upload = "y"
-    else:
-        print("\n" + "=" * 50)
-        do_upload = input("YouTubeにアップロードしますか？ [y/N]: ").strip().lower()
-
-    if do_upload == "y" and video_path and video_path.exists():
-        try:
-            if args.auto and args.publish_hours > 0:
-                from datetime import timedelta
-                publish_at = datetime.now() + timedelta(hours=args.publish_hours)
-            elif args.auto:
-                publish_at = None
-            else:
-                publish_input = input(
-                    "予約投稿の日時を入力してください（例: 2026/03/25 18:00）\n"
-                    "即公開の場合はEnterを押してください: "
-                ).strip()
-                publish_at = _parse_publish_at(publish_input) if publish_input else None
-
-            video_id = upload_video(
-                video_path=video_path,
-                title=youtube_title,
-                description=description,
-                tags=tags,
-                thumbnail_path=thumbnail_path,
-                publish_at=publish_at,
-            )
-            url = get_video_url(video_id)
-            if publish_at:
-                print(f"\n予約投稿完了！ {publish_at.strftime('%Y/%m/%d %H:%M')} に公開されます")
-            else:
-                print(f"\n公開完了！")
-            print(f"URL: {url}")
-            notify_success(theme, url)
-        except Exception as e:
-            notify_error("YouTubeアップロード", e)
-            print(f"[エラー] アップロード: {e}")
-    else:
+    # ── フェーズ7: アップロード ───────────────────────────
+    if args.no_upload:
         print("アップロードをスキップしました。")
+    elif args.auto:
+        import random
+        wait_sec = random.randint(60, 300)
+        print(f"自動モード: アップロード前に {wait_sec} 秒待機しています（ボット判定回避）...")
+        time.sleep(wait_sec)
 
-    print(f"\n=== 処理完了 ===")
-    print(f"タイトル  : {youtube_title}")
-    if output_path:   print(f"台本      : {output_path}")
-    if thumbnail_path: print(f"サムネイル: {thumbnail_path}")
-    if video_path:    print(f"動画      : {video_path}")
-    if url:           print(f"URL       : {url}")
+        from skills.skill_upload import run_upload
+        run_upload(
+            run_dir,
+            publish_time=args.publish_time or None,
+            publish_hours=args.publish_hours,
+            skip_wait=True,  # 既に待機済み
+        )
+    else:
+        try:
+            do_upload = input("YouTubeにアップロードしますか？ [y/N]: ").strip().lower()
+        except EOFError:
+            do_upload = "n"
+
+        if do_upload == "y":
+            from skills.skill_upload import run_upload
+
+            publish_input = ""
+            if not args.publish_time:
+                try:
+                    publish_input = input(
+                        "予約投稿の日時を入力してください（例: 2026/03/25 18:00）\n"
+                        "即公開の場合はEnterを押してください: "
+                    ).strip()
+                except EOFError:
+                    pass
+
+            run_upload(
+                run_dir,
+                publish_time=args.publish_time or publish_input or None,
+                publish_hours=args.publish_hours,
+            )
+        else:
+            print("アップロードをスキップしました。")
+
+    # ── 完了サマリ ───────────────────────────────────────
+    from skills._common import load_manifest
+    manifest = load_manifest(run_dir)
+    print(f"\n=== 処理完了 ({_elapsed()}) ===")
+    print(f"テーマ    : {theme}")
+    print(f"run_dir   : {run_dir}")
+
+    # 主要出力ファイルを表示
+    for phase_name in ["script_gen", "video_build", "thumbnail", "upload"]:
+        phase = manifest["phases"].get(phase_name, {})
+        for out in phase.get("outputs", []):
+            print(f"  {out}")
+
+    url = manifest["phases"].get("upload", {}).get("outputs", [None])
+    if isinstance(url, list):
+        for item in url:
+            if isinstance(item, str) and item.startswith("http"):
+                print(f"URL       : {item}")
 
 
 if __name__ == "__main__":
