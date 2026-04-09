@@ -1,6 +1,7 @@
 # 秘密情報・認証情報
 .env
 token.json
+token.json.bak
 credentials.json
 _secret_*.txt
 
@@ -17,6 +18,17 @@ __pycache__/
 
 # ローカルツール
 .claude/
+
+# ランタイム状態 (Discord inbox/outbox, heartbeat, alerts, sidecar)
+tmp_discord/
+
+# ツール/ブラウザ/各種キャッシュ
+.cache/
+.playwright-mcp/
+
+# Task Scheduler のバックアップ XML (セキュリティ・ユーザー名含む)
+task_backup.xml
+task_yukkuri_daily_backup.xml
 
 # pipの誤生成ファイル
 =*
