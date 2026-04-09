@@ -20,11 +20,11 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 from analytics_base import AnalysisModel, StatsCollector, StatsStore
-from analyzer import GeminiAnalysisModel, save_suggestions
+from analyzer import LLMAnalysisModel, GeminiAnalysisModel, save_suggestions
 from analytics_collector import YouTubeStatsCollector
 from analytics_store_json import JsonFileStore
 from sheets_writer import GoogleSheetsStore
-from notifier import notify_error
+from notifier import notify_error, notify_analytics_report
 
 # ── ファクトリ登録テーブル ────────────────────────────────────────
 # 新しい実装を追加するときはここにキーと型を追加するだけ
@@ -39,7 +39,8 @@ _STORES: dict[str, type[StatsStore]] = {
 }
 
 _MODELS: dict[str, type[AnalysisModel]] = {
-    "gemini": GeminiAnalysisModel,
+    "gemini": GeminiAnalysisModel,  # 後方互換（LLM_PROVIDER=gemini のとき動作）
+    "llm":    LLMAnalysisModel,     # プロバイダ非依存キー
 }
 
 
@@ -114,6 +115,17 @@ def main():
         print("\n【おすすめテーマ】")
         for theme in result.get("recommended_themes", []):
             print(f"  ・{theme}")
+        if result.get("se_insights"):
+            print("\n【SE(効果音)改善提案】")
+            for i, s in enumerate(result["se_insights"], 1):
+                print(f"  {i}. {s}")
+        # 分析完了をスマホに通知
+        notify_analytics_report(
+            video_count=len(stats),
+            analysis=result.get("analysis", ""),
+            suggestions=result.get("suggestions", []),
+            recommended_themes=result.get("recommended_themes", []),
+        )
     except Exception as e:
         notify_error("AI分析", e)
         print(f"[エラー] AI分析: {e}")

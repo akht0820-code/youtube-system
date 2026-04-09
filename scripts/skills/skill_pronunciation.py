@@ -32,17 +32,24 @@ _RAW_ALPHA_RE = re.compile(r"[A-Za-z]{2,}")          # 英字2文字以上
 
 
 def _get_script_path(run_dir: Path) -> Path:
-    """pipeline.json の script_gen outputs から台本JSONのパスを特定する"""
+    """pipeline.json の script_gen outputs から台本JSONのパスを特定する。
+
+    サイレントフォールバック禁止（2026-04-09事故対策）。
+    """
     manifest = load_manifest(run_dir)
     outputs = manifest["phases"]["script_gen"].get("outputs", [])
+    if not outputs:
+        raise FileNotFoundError(
+            f"台本JSONが manifest に登録されていません: {run_dir}"
+        )
     for out in outputs:
         path = run_dir.parent / out if not Path(out).is_absolute() else Path(out)
         if path.exists():
             return path
-    # フォールバック: run_dir の親にある .json を探す
-    for p in run_dir.parent.glob(f"{run_dir.name.split('_')[0]}*.json"):
-        return p
-    raise FileNotFoundError(f"台本JSONが見つかりません: {run_dir}")
+    raise FileNotFoundError(
+        f"台本JSONが manifest outputs に記載されているが実体なし: {run_dir} "
+        f"outputs={outputs}"
+    )
 
 
 def _compute_config_hashes() -> dict[str, str]:

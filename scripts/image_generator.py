@@ -10,11 +10,14 @@
 #   GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview  （デフォルト）
 
 import io
+import json
 import os
 import random
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from uuid import uuid4
 
 from dotenv import load_dotenv
 
@@ -562,64 +565,538 @@ def _generate_local_sd(
 
 # ── サムネイル背景画像（3枚生成→AI選定）────────────────────────
 
+# ── サムネイル多様性パラメータ（Codex協議済み 2026-04-09）────────
+# Python側で候補セットから重み付き選定し、LLMはフォーマットのみ担当する。
+# LLMに自由生成させると例文を模倣して人物・設定が固まるため。
 
-def _build_thumbnail_bg_prompt(theme: str, youtube_title: str, script: dict) -> str:
-    """台本の内容からサムネ背景用のフォトリアル画像プロンプトを生成する。
+SUBJECT_PROFILES: list[tuple[int, str, str, str]] = [
+    # (weight, age_label, gender, ethnicity_hint)
+    (25, "40s",       "woman", "East Asian Japanese"),
+    (25, "50s",       "woman", "East Asian Japanese"),
+    (15, "60s",       "woman", "East Asian Japanese"),
+    (10, "40s",       "man",   "East Asian Japanese"),
+    (10, "50s",       "man",   "East Asian Japanese"),
+    (5,  "60s",       "man",   "East Asian Japanese"),
+    (5,  "early 30s", "woman", "East Asian Japanese"),
+    (3,  "early 30s", "man",   "East Asian Japanese"),
+    (1,  "late 20s",  "woman", "East Asian Japanese"),
+    (1,  "late 20s",  "man",   "East Asian Japanese"),
+]
 
-    Gemini Proがテーマ・台本内容を分析し、YouTubeでクリックしたくなる
-    フォトリアルな人物入り背景画像のプロンプトを生成する。
+THEME_SETTINGS: dict[str, list[str]] = {
+    "food": [
+        "modern home kitchen with natural light",
+        "japanese family dining table",
+        "supermarket grocery aisle",
+        "cafe table with coffee and food",
+        "bright home dining room",
+        "convenience store refrigerated aisle",
+    ],
+    "exercise": [
+        "sunlit city park with walking path",
+        "residential street with gentle slope",
+        "indoor staircase of a modern building",
+        "riverside walking trail at dawn",
+        "small community gym with wooden floor",
+        "tatami room for stretching",
+    ],
+    "sleep": [
+        "cozy bedroom with soft morning light",
+        "living room sofa with a blanket",
+        "bedside with nightstand and warm lamp",
+        "japanese futon room at night",
+    ],
+    "dental": [
+        "bright bathroom sink area",
+        "dental clinic waiting room",
+        "home washroom with mirror",
+    ],
+    "mental": [
+        "quiet home living room by the window",
+        "urban park bench under trees",
+        "workplace desk near a window",
+        "tatami room with soft daylight",
+        "cafe seat by the window on a rainy day",
+    ],
+    "general": [
+        "modern home living room",
+        "bright cafe near the window",
+        "sunlit park walkway",
+        "residential street corner",
+        "japanese style tatami room",
+        "sunlit veranda overlooking a garden",
+        "rooftop terrace at golden hour",
+    ],
+}
+
+LIGHTING: list[str] = [
+    "warm golden hour sunlight",
+    "cool bluish morning light",
+    "dramatic backlit rim lighting",
+    "overcast soft neutral daylight",
+    "sunset orange glow",
+    "soft window side light",
+]
+
+SHOT_TYPE: list[str] = [
+    "medium shot from chest up",
+    "medium close-up framing head and shoulders",
+    "close-up portrait of the face",
+    "three quarter body shot",
+    "slight low angle medium shot",
+]
+
+WARDROBE_TONE: list[str] = [
+    "earth tone clothing (beige, olive, rust)",
+    "muted pastel clothing (dusty pink, sage)",
+    "monochrome neutral clothing (grey, ivory, charcoal)",
+    "warm brown and beige knitwear",
+    "cool navy and grey casual wear",
+]
+
+# テーマカテゴリごとの小物・文脈語彙（Codex指摘: テンプレート化で文脈が失われる問題の緩和）
+# Pythonテンプレートに差し込むことで、同じ食品カテゴリでも被写体の小物が変わる
+THEME_CONTEXT_PROPS: dict[str, list[str]] = {
+    "food": [
+        "holding a grocery basket",
+        "looking at a food label with a concerned expression",
+        "a plate of prepared food in the foreground",
+        "reaching for a product on a shelf",
+        "seated with tea and a small dish nearby",
+    ],
+    "exercise": [
+        "wearing casual walking clothes",
+        "holding a water bottle",
+        "with a towel around the neck",
+        "mid-stride while walking",
+        "resting one hand on a railing",
+    ],
+    "sleep": [
+        "holding a mug of warm tea",
+        "wearing comfortable loungewear",
+        "sitting on the edge of a bed",
+        "stretching slightly",
+    ],
+    "dental": [
+        "touching the cheek lightly",
+        "holding a toothbrush",
+        "gently pressing jaw with a hand",
+    ],
+    "mental": [
+        "resting chin on one hand",
+        "looking quietly out of a window",
+        "hands gently folded",
+        "holding a warm drink",
+    ],
+    "general": [
+        "in a relaxed everyday pose",
+        "with natural hand gesture near the face",
+        "looking slightly off-camera",
+    ],
+}
+
+# 警告系トーン（このチャンネルのメイン）の表情バリエーション
+# anxious一辺倒を避けつつ、視聴者の共感を誘う表情を分散配置
+EXPRESSIONS_WARNING: list[tuple[int, str]] = [
+    (30, "worried frown with furrowed brows"),
+    (25, "anxious expression biting lower lip softly"),
+    (15, "shocked with wide eyes and slightly open mouth"),
+    (10, "suspicious narrowed eyes looking sideways"),
+    (10, "pensive melancholy gaze downward"),
+    (10, "fatigued weary expression with a small sigh"),
+]
+
+THUMB_HISTORY_FILE_NAME = ".thumbnail_history.json"
+THUMB_HISTORY_KEEP = 30  # 履歴保持件数
+THUMB_RESERVATION_TTL = 3600  # 予約の有効期限 (秒): 1時間以上古い reserved エントリは stale とみなす
+
+
+def _thumbnail_history_path() -> Path:
+    """履歴ファイルのパス（output/ 直下）"""
+    return Path(__file__).resolve().parent.parent / "output" / THUMB_HISTORY_FILE_NAME
+
+
+def _quarantine_history(path: Path, reason: str) -> None:
+    """破損履歴ファイルを .corrupt.{ts} にリネームして退避する。"""
+    try:
+        ts = int(time.time())
+        new_name = f"{path.name}.corrupt.{ts}"
+        path.rename(path.with_name(new_name))
+        print(f"    [!] サムネ履歴を退避: {new_name} (reason={reason})")
+    except Exception as e:
+        print(f"    [!] サムネ履歴退避失敗: {e}")
+
+
+def _history_lock_path() -> Path:
+    return _thumbnail_history_path().with_name(
+        _thumbnail_history_path().name + ".lock"
+    )
+
+
+class _HistoryLockError(RuntimeError):
+    """ロック取得に失敗した (fail-fast)"""
+
+
+class _HistoryLock:
+    """クロスプラットフォームなファイルロック (fcntl/msvcrt 排他)。
+
+    取得失敗時は _HistoryLockError を送出する (無ロック継続は禁止)。
+    Codex 指摘: 前回は失敗しても self を返していたため、競合時に
+    load-append-save が無排他で走る危険があった。
     """
-    from google import genai
-    from secrets import get_secret
 
-    api_key = get_secret("GEMINI_API_KEY")
-    client = genai.Client(api_key=api_key)
+    LOCK_RETRY_MAX = 600   # Windows: 600回 × 50ms = 30秒
+    LOCK_RETRY_SLEEP = 0.05
 
-    # 台本の冒頭セリフ（内容理解用）
-    preview_lines = []
-    for sec in script.get("sections", [])[:3]:
-        for line in sec.get("lines", [])[:5]:
-            preview_lines.append(f'{line.get("character","")}: {line.get("text","")[:50]}')
-    script_preview = "\n".join(preview_lines[:10])
+    def __init__(self) -> None:
+        self._f = None
+        self._locked = False
 
-    request = f"""You are a YouTube thumbnail image director. Create an English prompt for generating a photo-realistic background image for a Japanese health YouTube thumbnail.
+    def __enter__(self) -> "_HistoryLock":
+        lock_path = _history_lock_path()
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self._f = open(lock_path, "a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                self._f.seek(0)
+                last_err: Exception | None = None
+                for _ in range(self.LOCK_RETRY_MAX):
+                    try:
+                        msvcrt.locking(self._f.fileno(), msvcrt.LK_NBLCK, 1)
+                        self._locked = True
+                        break
+                    except OSError as e:
+                        last_err = e
+                        time.sleep(self.LOCK_RETRY_SLEEP)
+                if not self._locked:
+                    raise _HistoryLockError(
+                        f"msvcrt.locking failed after "
+                        f"{self.LOCK_RETRY_MAX} attempts: {last_err}"
+                    )
+            else:
+                import fcntl
+                fcntl.flock(self._f.fileno(), fcntl.LOCK_EX)
+                self._locked = True
+        except Exception:
+            try:
+                self._f.close()
+            except Exception:
+                pass
+            self._f = None
+            raise
+        return self
 
-## Video Info
-- Theme (Japanese): {theme}
-- YouTube Title: {youtube_title}
-- Script Preview:
-{script_preview}
+    def __exit__(self, *args) -> None:
+        if self._f is None:
+            return
+        if self._locked:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    self._f.seek(0)
+                    msvcrt.locking(self._f.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self._f.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+        try:
+            self._f.close()
+        except Exception:
+            pass
+        self._f = None
+        self._locked = False
 
-## Your Task
-Generate a prompt for a photo-realistic image that would make viewers CLICK on this thumbnail when browsing YouTube recommendations.
 
-## Rules
-1. **MUST include a person** fitting the video content:
-   - Decide age, gender, ethnicity based on video content (e.g. health topic for elderly → middle-aged/elderly person)
-   - Use diverse, photogenic people (Western, Asian, etc. - your choice based on what fits best)
-   - The person's facial expression MUST match the video's emotional tone:
-     - Dangerous/warning content → shocked, worried, holding head in disbelief
-     - Positive/health benefit content → bright smile, energetic, confident
-     - Surprising facts → wide eyes, open mouth, astonished
-     - Sad/serious content → concerned, furrowed brows, pensive
-   - Person should be in a relevant setting/location
+def _load_thumbnail_history() -> list[dict]:
+    """サムネ履歴を読み込む。破損・非listは退避して空リストを返す。
 
-2. **Setting must match video content**:
-   - "Stairs vs elevator" → dramatic staircase in beautiful building
-   - "Brain damage from bad habits" → office/home setting
-   - "Dangerous food" → kitchen or dining setting
+    非dict要素はフィルタするだけで退避はしない（混在は部分破損扱い）。
+    stale な予約エントリ (reserved=true かつ TTL超過) は自動除去する
+    (Codex指摘: プロセスクラッシュで残留した予約が多様性ロジックを汚染)。
+    """
+    p = _thumbnail_history_path()
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        _quarantine_history(p, reason="json_decode")
+        return []
+    if not isinstance(data, list):
+        _quarantine_history(p, reason="not_list")
+        return []
+    # 要素型検証: dict のみ残す
+    items = [h for h in data if isinstance(h, dict)]
+    # stale 予約 GC
+    now = time.time()
+    cleaned = []
+    stale_count = 0
+    for h in items:
+        if h.get("reserved") is True:
+            try:
+                ts = float(h.get("ts", 0))
+            except (TypeError, ValueError):
+                ts = 0
+            if now - ts > THUMB_RESERVATION_TTL:
+                stale_count += 1
+                continue
+        cleaned.append(h)
+    if stale_count > 0:
+        print(f"    [i] stale 予約 {stale_count} 件を GC しました")
+    return cleaned
 
-3. **Photography style**: Professional editorial/lifestyle photography, high contrast, vivid colors, shallow depth of field, dramatic lighting
 
-4. **Composition**: 16:9 widescreen. Person positioned in the RIGHT THIRD of the frame (X: 60-90% from left). LEFT 60% of frame must be clean/blurred background for text overlay. Person's FACE must be FULLY VISIBLE — facing camera or at 3/4 angle, well-lit, no shadows hiding eyes. NEVER place person in center or left half.
+def _save_thumbnail_history(history: list[dict]) -> None:
+    """サムネ履歴を原子的に書き込む（直近 THUMB_HISTORY_KEEP 件のみ保持）
 
-5. **Output**: English only, 60-80 words, prompt text only, no labels or explanations
+    Codex指摘: 例外を握り潰すと予約/確定/取消しが永続化されず、
+    「予約したつもり」状態で処理が進むため、raise して呼び出し元に伝播する。
+    """
+    p = _thumbnail_history_path()
+    trimmed = history[-THUMB_HISTORY_KEEP:]
+    p.parent.mkdir(parents=True, exist_ok=True)
+    # .tmp 名をユニークにして同時書き込みの衝突を避ける
+    tmp = p.with_name(f"{p.name}.tmp.{os.getpid()}.{uuid4().hex[:8]}")
+    tmp.write_text(
+        json.dumps(trimmed, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    os.replace(tmp, p)
 
-## Example:
-"Professional lifestyle photography, dramatic natural lighting, middle-aged Caucasian woman with shocked expression holding her head in disbelief, facing camera at slight angle, standing in a modern bright kitchen, warm amber and cool blue contrast tones, 16:9 widescreen, shallow depth of field, high contrast editorial style, face clearly visible in right half of frame"
-"""
-    response = client.models.generate_content(model=_PROMPT_BUILD_MODEL, contents=request)
-    return response.text.strip().strip('"').strip("'")
+
+def _classify_theme(theme: str, youtube_title: str, script: dict) -> str:
+    """テーマ文字列・台本冒頭から設定カテゴリを分類する。"""
+    text = f"{theme} {youtube_title}"
+    for sec in script.get("sections", [])[:2]:
+        text += " " + (sec.get("heading") or "")
+        for line in sec.get("lines", [])[:3]:
+            text += " " + (line.get("text") or "")
+
+    # 先に判定したい順（dental/sleepは専用表現が強い）
+    keyword_map: list[tuple[str, list[str]]] = [
+        ("dental",   ["歯", "虫歯", "歯磨き", "歯周", "口臭", "口の中"]),
+        ("sleep",    ["睡眠", "寝る", "眠", "枕", "布団", "不眠", "いびき"]),
+        ("exercise", ["運動", "ウォーキング", "歩く", "筋トレ", "ストレッチ", "階段", "ジム", "体操"]),
+        ("mental",   ["ストレス", "不安", "うつ", "メンタル", "心の", "認知"]),
+        ("food",     ["食品", "食べ", "食事", "料理", "スーパー", "添加物", "加工", "調味料",
+                      "野菜", "肉", "魚", "砂糖", "油", "塩", "飲み物", "ジュース", "お菓子", "パン"]),
+    ]
+    for cat, kws in keyword_map:
+        if any(kw in text for kw in kws):
+            return cat
+    return "general"
+
+
+def _weighted_pick(weighted: list[tuple]) -> tuple:
+    """重み付きランダム選定。要素は (weight, ...) のタプル。"""
+    total = sum(w for w, *_ in weighted)
+    r = random.uniform(0, total)
+    acc = 0.0
+    for item in weighted:
+        acc += item[0]
+        if r <= acc:
+            return item
+    return weighted[-1]
+
+
+def _pick_with_avoidance(candidates: list, recent: list, avoid_last_n: int):
+    """直近N件と重複しない候補をランダム選定。全候補が被ったら通常ランダム。"""
+    if avoid_last_n <= 0:
+        return random.choice(candidates)
+    recent_set = set(recent[-avoid_last_n:])
+    available = [c for c in candidates if c not in recent_set]
+    if not available:
+        available = candidates
+    return random.choice(available)
+
+
+def _pick_thumbnail_params_from_history(
+    theme: str, youtube_title: str, script: dict, history: list[dict],
+) -> dict:
+    """事前にロード済み履歴から params を決定する (ロック内呼び出し用)。"""
+    # 人物
+    recent_subjects = [h.get("subject_key") for h in history if h.get("subject_key")]
+    avoid = set(recent_subjects[-3:])
+    age_label = gender = ethnicity = ""
+    subject_key = ""
+    for _ in range(10):
+        _, age_label, gender, ethnicity = _weighted_pick(SUBJECT_PROFILES)
+        subject_key = f"{age_label}-{gender}"
+        if subject_key not in avoid:
+            break
+
+    # 設定（テーマ分類）
+    category = _classify_theme(theme, youtube_title, script)
+    setting_pool = THEME_SETTINGS.get(category, THEME_SETTINGS["general"])
+    recent_settings = [h.get("setting") for h in history if h.get("setting")]
+    setting = _pick_with_avoidance(setting_pool, recent_settings, avoid_last_n=5)
+
+    # 照明
+    recent_lighting = [h.get("lighting") for h in history if h.get("lighting")]
+    lighting = _pick_with_avoidance(LIGHTING, recent_lighting, avoid_last_n=3)
+
+    # ショット
+    recent_shots = [h.get("shot_type") for h in history if h.get("shot_type")]
+    shot_type = _pick_with_avoidance(SHOT_TYPE, recent_shots, avoid_last_n=2)
+
+    # 服装
+    recent_wardrobe = [h.get("wardrobe") for h in history if h.get("wardrobe")]
+    wardrobe = _pick_with_avoidance(WARDROBE_TONE, recent_wardrobe, avoid_last_n=2)
+
+    # 表情
+    _, expression = _weighted_pick(EXPRESSIONS_WARNING)
+
+    # 小物・ポーズ（テーマ文脈の緩和、直近2件回避）
+    prop_pool = THEME_CONTEXT_PROPS.get(category, THEME_CONTEXT_PROPS["general"])
+    recent_props = [h.get("prop") for h in history if h.get("prop")]
+    prop = _pick_with_avoidance(prop_pool, recent_props, avoid_last_n=2)
+
+    return {
+        "subject_key": subject_key,
+        "age_label": age_label,
+        "gender": gender,
+        "ethnicity": ethnicity,
+        "setting": setting,
+        "lighting": lighting,
+        "shot_type": shot_type,
+        "wardrobe": wardrobe,
+        "expression": expression,
+        "prop": prop,
+        "theme_category": category,
+    }
+
+
+def _pick_thumbnail_params(theme: str, youtube_title: str, script: dict) -> dict:
+    """後方互換用: ロック無しで履歴を読み pick のみ行う (テスト等で使用)。"""
+    history = _load_thumbnail_history()
+    return _pick_thumbnail_params_from_history(theme, youtube_title, script, history)
+
+
+def _pick_and_reserve_thumbnail_params(
+    theme: str, youtube_title: str, script: dict,
+) -> dict:
+    """ロック内で 履歴ロード → pick → 仮予約追記 を原子的に行う。
+
+    Codex 指摘: 並列実行時に 2 本が同じ stale history を見て同じ params を
+    選んでしまう競合を防ぐ。pick した瞬間に reserved=true の暫定エントリを
+    追記することで、後続プロセスはその選択を「直近」として回避できる。
+
+    予約は uuid4 による一意IDで識別 (同秒同pidでも衝突しない)。
+    """
+    reservation_id = uuid4().hex
+    with _HistoryLock():
+        history = _load_thumbnail_history()
+        params = _pick_thumbnail_params_from_history(
+            theme, youtube_title, script, history
+        )
+        # 暫定予約 (成功後に確定履歴で上書きされる前提)
+        reserved_entry = {
+            "reservation_id": reservation_id,
+            "ts": int(time.time()),
+            "theme": theme[:80],
+            "subject_key": params["subject_key"],
+            "setting": params["setting"],
+            "lighting": params["lighting"],
+            "shot_type": params["shot_type"],
+            "wardrobe": params["wardrobe"],
+            "expression": params["expression"],
+            "prop": params["prop"],
+            "theme_category": params["theme_category"],
+            "reserved": True,
+        }
+        history.append(reserved_entry)
+        _save_thumbnail_history(history)
+    params["_reservation_id"] = reservation_id
+    return params
+
+
+def _finalize_thumbnail_history(params: dict, theme: str) -> None:
+    """予約済みエントリを reserved=false に昇格する。
+
+    予約が見つからない場合 (stale GC で消えた/ファイル破損で退避された等) は
+    警告を出し、完全な params を改めて新規追加する (prop 等を落とさない)。
+    """
+    rid = params.get("_reservation_id")
+    if rid is None:
+        print("    [!] _reservation_id なし: 予約昇格をスキップし新規追加で継続")
+    with _HistoryLock():
+        history = _load_thumbnail_history()
+        updated = False
+        if rid is not None:
+            for h in history:
+                if h.get("reservation_id") == rid and h.get("reserved") is True:
+                    h.pop("reserved", None)
+                    h["ts"] = int(time.time())
+                    h["theme"] = theme[:80]
+                    updated = True
+                    break
+        if not updated:
+            # 予約が見つからない異常状態 → 完全 params を新規追加
+            if rid is not None:
+                print(
+                    f"    [!] 予約 {rid[:8]} が見つかりません (stale GC or 破損退避)。"
+                    f"完全な params を新規追加します"
+                )
+            history.append({
+                "ts": int(time.time()),
+                "theme": theme[:80],
+                "subject_key": params["subject_key"],
+                "setting": params["setting"],
+                "lighting": params["lighting"],
+                "shot_type": params["shot_type"],
+                "wardrobe": params["wardrobe"],
+                "expression": params["expression"],
+                "prop": params["prop"],
+                "theme_category": params["theme_category"],
+            })
+        _save_thumbnail_history(history)
+
+
+def _cancel_thumbnail_reservation(params: dict) -> None:
+    """生成失敗時に予約エントリを履歴から除去する。
+
+    reservation_id で完全一致する1エントリのみ除去 (他の並列予約は触らない)。
+    """
+    rid = params.get("_reservation_id")
+    if rid is None:
+        return
+    try:
+        with _HistoryLock():
+            history = _load_thumbnail_history()
+            history = [h for h in history if h.get("reservation_id") != rid]
+            _save_thumbnail_history(history)
+    except Exception as e:
+        print(f"    [!] サムネ予約キャンセル失敗: {e}")
+
+
+def _build_thumbnail_bg_prompt(params: dict) -> str:
+    """Python側のテンプレートで Imagen 用の英語プロンプトを直接組み立てる。
+
+    LLM を経由しないため、params の改変・人物追加・表情差し替えは物理的に不可能。
+    Codex協議済み: 以前は Gemini にフォーマットを依頼していたが、それだと
+    HARD CONSTRAINTS が「お願い」にしかならず改変リスクが残るため廃止。
+    テーマ文脈は prop (テーマ別小物・ポーズ) で補足する。
+    """
+    prop = params.get("prop") or ""
+    prop_clause = f" {prop}," if prop else ""
+    return (
+        f"Professional editorial lifestyle photography of a single "
+        f"{params['age_label']} {params['ethnicity']} {params['gender']} "
+        f"with a {params['expression']}, wearing {params['wardrobe']},"
+        f"{prop_clause} in {params['setting']}, "
+        f"lit by {params['lighting']}, {params['shot_type']}, "
+        f"16:9 widescreen aspect ratio. "
+        f"The person is positioned in the right third of the frame "
+        f"(horizontally 60 to 90 percent from the left edge). "
+        f"The left 60 percent of the frame is kept clean and softly blurred, "
+        f"with room for Japanese text overlay. "
+        f"The face is fully visible, facing the camera or at a three-quarter angle, "
+        f"no shadow hiding the eyes. Shallow depth of field, high contrast, "
+        f"vivid but believable color grading, no second person, "
+        f"no stock-photo cliches, no text or logos in the image."
+    )
 
 
 def _generate_imagen_thumbnail_candidates(
@@ -749,12 +1226,13 @@ def generate_thumbnail_background(
     output_path: Path,
     width: int = 1280,
     height: int = 720,
-) -> "Path | None":
+) -> "tuple[Path, int | None] | None":
     """サムネイル用の背景画像を生成する。
 
-    1. Gemini Proが台本内容からプロンプトを生成
-    2. Imagen 4 Fastで3枚生成
-    3. Gemini Proが最適な1枚を選定
+    1. Python側で多様性パラメータ (人物/設定/照明/表情) を履歴回避付き選定
+    2. 固定テンプレートで英語プロンプトを組み立て
+    3. Imagen 4 Fastで3枚生成
+    4. Gemini Proが最適な1枚を選定し、人物左端X座標も推定
 
     Args:
         theme: 動画テーマ（日本語）
@@ -765,17 +1243,32 @@ def generate_thumbnail_background(
         height: 画像高さ
 
     Returns:
-        保存したファイルのパス。失敗時は None。
+        (保存したファイルのパス, 人物左端X座標 or None) のタプル。
+        失敗時は None。
     """
     print(f"  サムネ背景画像を生成しています [Imagen 4 Fast × 3枚 → AI選定]")
 
+    # 例外時にも掃除できるよう try の外で初期化
+    tmp_dir: Path | None = None
+    params: dict | None = None
+    finalized = False
     try:
-        # Step 1: プロンプト生成
-        prompt = _build_thumbnail_bg_prompt(theme, youtube_title, script)
+        # Step 0: ロック内で履歴読込→params選定→暫定予約を原子的に行う
+        # Codex指摘: 無ロック pick は並列実行時に同じ stale history を見る
+        params = _pick_and_reserve_thumbnail_params(theme, youtube_title, script)
+        print(
+            f"    params: {params['subject_key']} / {params['theme_category']} "
+            f"/ {params['setting'][:40]} / {params['lighting']} / {params.get('prop','')[:30]}"
+        )
+
+        # Step 1: プロンプト組み立て（Pythonテンプレート、LLM非介在）
+        prompt = _build_thumbnail_bg_prompt(params)
         print(f"    プロンプト: {prompt[:80]}...")
 
-        # Step 2: 3枚生成
-        tmp_dir = output_path.parent / "_thumb_bg_candidates"
+        # Step 2: 3枚生成（並行実行耐性のためユニーク tmp dir）
+        tmp_dir = output_path.parent / (
+            f"_thumb_bg_candidates_{int(time.time())}_{os.getpid()}_{uuid4().hex[:8]}"
+        )
         candidates = _generate_imagen_thumbnail_candidates(
             prompt, width, height, tmp_dir, count=3,
         )
@@ -792,15 +1285,32 @@ def generate_thumbnail_background(
         shutil.copy2(best, output_path)
         print(f"  → サムネ背景画像を保存: {output_path.name}")
 
-        # 候補画像を削除
-        import shutil as _shutil
-        _shutil.rmtree(tmp_dir, ignore_errors=True)
+        # 履歴確定（予約エントリを reserved=false に昇格）
+        # 意図的な握り潰し: サムネ背景画像はすでに output_path に保存済み。
+        # 履歴更新に失敗してもサムネ自体は完成しているため、ログのみ出して継続する。
+        # 残留した予約は次回実行時の _load_thumbnail_history() の TTL GC で掃除される。
+        try:
+            _finalize_thumbnail_history(params, theme)
+            finalized = True
+        except Exception as e:
+            print(f"    [!] サムネ履歴確定失敗 (サムネ自体は成功・継続): {e}")
 
         return output_path, face_left_x
 
     except Exception as e:
         print(f"  [!] サムネ背景画像生成失敗: {e}")
         return None
+    finally:
+        # tmp_dir は成功/失敗を問わず掃除 (Codex指摘: 例外経路リーク)
+        if tmp_dir is not None:
+            try:
+                import shutil as _shutil
+                _shutil.rmtree(tmp_dir, ignore_errors=True)
+            except Exception:
+                pass
+        # 未確定のまま終わった予約はキャンセル
+        if params is not None and not finalized:
+            _cancel_thumbnail_reservation(params)
 
 
 # ── Imagen 4 Fast（セクション画像専用）─────────────────────────
@@ -893,19 +1403,37 @@ def generate_section_image(
     else:
         prompt = _build_prompt_static(section_content)
 
-    try:
-        if _SECTION_PROVIDER == "imagen":
-            return _generate_imagen_fast(prompt, width, height, output_path)
-        elif _SECTION_PROVIDER == "gemini":
-            return _generate_gemini(prompt, width, height, output_path)
-        elif _SECTION_PROVIDER == "pollinations":
-            return _generate_pollinations(prompt, width, height, output_path)
-        else:
-            print(f"  [!] 未対応のSECTION_IMAGE_PROVIDER: {_SECTION_PROVIDER!r}")
-            return None
-    except Exception as e:
-        print(f"  [!] セクション画像生成失敗 ({_SECTION_PROVIDER}): {e}")
+    # 多段フォールバック: Imagen → Imagen(短文) → Gemini → Pollinations
+    _fallback_chain = []
+    if _SECTION_PROVIDER == "imagen":
+        _fallback_chain = [
+            ("imagen", prompt, _generate_imagen_fast),
+            ("imagen(短文)", prompt[:200] if len(prompt) > 200 else prompt, _generate_imagen_fast),
+            ("gemini", prompt, _generate_gemini),
+            ("pollinations", _build_prompt_static(section_content), _generate_pollinations),
+        ]
+    elif _SECTION_PROVIDER == "gemini":
+        _fallback_chain = [
+            ("gemini", prompt, _generate_gemini),
+            ("pollinations", _build_prompt_static(section_content), _generate_pollinations),
+        ]
+    elif _SECTION_PROVIDER == "pollinations":
+        _fallback_chain = [("pollinations", prompt, _generate_pollinations)]
+    else:
+        print(f"  [!] 未対応のSECTION_IMAGE_PROVIDER: {_SECTION_PROVIDER!r}")
         return None
+
+    for _fb_name, _fb_prompt, _fb_fn in _fallback_chain:
+        try:
+            result = _fb_fn(_fb_prompt, width, height, output_path)
+            if result and output_path.exists():
+                return result
+        except Exception as e:
+            print(f"  [!] セクション画像生成失敗 ({_fb_name}): {e}")
+            continue
+
+    print(f"  [!] セクション画像: 全フォールバック失敗")
+    return None
 
 
 def generate_background(

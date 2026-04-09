@@ -143,12 +143,12 @@ def run_video_build(run_dir: str | Path) -> dict:
                 script_json_path = p
                 break
         if script_json_path is None:
-            # フォールバック: run_dir の親で .json を探す
-            for p in run_dir.parent.glob(f"{run_dir.name.split('_')[0]}*.json"):
-                script_json_path = p
-                break
-        if script_json_path is None:
-            raise FileNotFoundError(f"台本JSONが見つかりません: {run_dir}")
+            # サイレントフォールバック禁止（2026-04-09事故対策）
+            # manifest の script_gen.outputs に記載が無い/実体が無い場合は失敗終了
+            raise FileNotFoundError(
+                f"台本JSONが manifest outputs で見つかりません: {run_dir} "
+                f"outputs={script_outputs}"
+            )
 
         video_path = script_json_path.with_suffix(".mp4")
 
@@ -161,6 +161,13 @@ def run_video_build(run_dir: str | Path) -> dict:
                 if candidate.exists():
                     bg_path = candidate
                     break
+
+        # メモリ確保: 不要プロセスkill + GC + メモリ確認
+        try:
+            from skills._common import ensure_memory
+            ensure_memory("video_build_preflight")
+        except Exception as _mem_e:
+            logger.log(f"  [メモリ確保警告] {_mem_e}")
 
         logger.log("【動画生成】動画を生成しています...")
         logger.log(f"  音声ディレクトリ: {audio_dir}")

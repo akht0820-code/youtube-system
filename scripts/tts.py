@@ -101,37 +101,65 @@ def _generate_audio_aquestalk(script: dict, output_dir: Path) -> list[Path]:
             base_speed = _SPEED_MAP.get(voice_key, 100)
             line_speed = int(base_speed * prosody["speed"])
 
+        # AquesTalk合成（失敗時: 再補正リトライ → 最終手段として強制クリーニング）
+        synth_ok = False
+        for _attempt in range(3):
+            try:
+                if _attempt == 0:
+                    aq_synthesize(text, character, output_path, speed=line_speed)
+                elif _attempt == 1:
+                    # リトライ1: check_synthesis経由で再補正
+                    from check_synthesis import _run_pipeline
+                    fixed_text = _run_pipeline(text)
+                    if fixed_text and fixed_text != text:
+                        print(f"  [{num:03d}] 再補正リトライ: {fixed_text[:30]}")
+                    aq_synthesize(fixed_text or text, character, output_path, speed=line_speed)
+                else:
+                    # リトライ2: ひらがな・カタカナ・句読点のみに強制クリーニング
+                    import re as _re_tts
+                    stripped = _re_tts.sub(r"[^\u3041-\u3093\u30A1-\u30F6\u30FCー、。]", "", text)
+                    if not stripped:
+                        stripped = "。"
+                    print(f"  [{num:03d}] 強制クリーニングリトライ: {stripped[:30]}")
+                    aq_synthesize(stripped, character, output_path, speed=line_speed)
+                synth_ok = True
+                break
+            except Exception as e:
+                if _attempt < 2:
+                    continue
+                msg = f"  [!] [{num:03d}] {character} の音声生成に失敗(3回リトライ後): {e}"
+                try:
+                    print(msg)
+                except UnicodeEncodeError:
+                    print(msg.encode("cp932", errors="replace").decode("cp932"))
+
+        if not synth_ok:
+            continue
+
+        # 後処理パイプライン（WAVバイト読み取り→処理→上書き）
         try:
-            aq_synthesize(text, character, output_path, speed=line_speed)
-            # 後処理パイプライン（WAVバイト読み取り→処理→上書き）
-            try:
-                wav_data = apply_pipeline(output_path.read_bytes(), character)
-                # プロソディのピッチ・音量を適用（speed以外）
-                if prosody:
-                    wav_data = apply_prosody(wav_data, prosody)
-                output_path.write_bytes(wav_data)
-            except Exception:
-                pass  # パイプライン失敗は無視して生成済み WAV をそのまま使う
-            preview = text[:20] + ("..." if len(text) > 20 else "")
-            prosody_tag = ""
+            wav_data = apply_pipeline(output_path.read_bytes(), character)
+            # プロソディのピッチ・音量を適用（speed以外）
             if prosody:
-                parts = []
-                if prosody.get("speed", 1.0) != 1.0:
-                    parts.append(f"spd={prosody['speed']}")
-                if abs(prosody.get("pitch", 0)) >= 0.1:
-                    parts.append(f"pit={prosody['pitch']:+.1f}")
-                if abs(prosody.get("volume", 0)) >= 0.5:
-                    parts.append(f"vol={prosody['volume']:+.1f}")
-                if parts:
-                    prosody_tag = f" [{','.join(parts)}]"
-            print(f"  [{num:03d}] {character}: {preview}{prosody_tag}")
-            saved_files.append(output_path)
-        except Exception as e:
-            msg = f"  [!] [{num:03d}] {character} の音声生成に失敗: {e}"
-            try:
-                print(msg)
-            except UnicodeEncodeError:
-                print(msg.encode("cp932", errors="replace").decode("cp932"))
+                wav_data = apply_prosody(wav_data, prosody)
+            output_path.write_bytes(wav_data)
+        except Exception:
+            pass  # パイプライン失敗は無視して生成済み WAV をそのまま使う
+        preview = text[:20] + ("..." if len(text) > 20 else "")
+        prosody_tag = ""
+        if prosody:
+            parts = []
+            if prosody.get("speed", 1.0) != 1.0:
+                parts.append(f"spd={prosody['speed']}")
+            if abs(prosody.get("pitch", 0)) >= 0.1:
+                parts.append(f"pit={prosody['pitch']:+.1f}")
+            if abs(prosody.get("volume", 0)) >= 0.5:
+                parts.append(f"vol={prosody['volume']:+.1f}")
+            if parts:
+                prosody_tag = f" [{','.join(parts)}]"
+        retry_tag = f" [retry{_attempt}]" if _attempt > 0 else ""
+        print(f"  [{num:03d}] {character}: {preview}{prosody_tag}{retry_tag}")
+        saved_files.append(output_path)
 
     return sorted(saved_files)
 

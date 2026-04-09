@@ -21,12 +21,14 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMP_DIR = PROJECT_ROOT / "tmp_discord"
 HEARTBEAT_FILE = TEMP_DIR / "heartbeat.txt"
 CHAT_LOG = TEMP_DIR / "chat.log"
-OUTBOX = TEMP_DIR / "outbox.json"
+OUTBOX_DIR = TEMP_DIR / "outbox"
+OUTBOX = TEMP_DIR / "outbox.json"  # 後方互換
 LAST_READ_POS = TEMP_DIR / "last_watchdog_pos.txt"
 PYTHON = r"C:\Users\user\AppData\Local\Programs\Python\Python311\python.exe"
 BOT_SCRIPT = PROJECT_ROOT / "scripts" / "discord_bot.py"
@@ -44,26 +46,54 @@ def _get_heartbeat_age() -> float:
 
 
 def _is_bot_process_alive() -> bool:
-    """discord_bot.pyプロセスが存在するか"""
+    """discord_bot.pyプロセスが存在するか（Windows tasklist使用）"""
     try:
+        # Windows tasklist + wmic でコマンドライン確認
         result = subprocess.run(
-            ["ps", "aux"], capture_output=True, text=True, timeout=10,
+            ["wmic", "process", "where", "name='python.exe'", "get", "commandline"],
+            capture_output=True, text=True, encoding="cp932",
+            errors="replace", timeout=10,
         )
         return "discord_bot.py" in result.stdout
     except Exception:
-        return False
+        # フォールバック: ps aux（WSLから直接実行時）
+        try:
+            result = subprocess.run(
+                ["ps", "aux"], capture_output=True, text=True, timeout=10,
+            )
+            return "discord_bot.py" in result.stdout
+        except Exception:
+            return False
 
 
 def _kill_bot():
-    """discord_bot.pyプロセスをkill（heartbeat.txtのPIDのみ対象）"""
-    # heartbeat.txtからBot PIDを取得（他のpython.exeを巻き込まない）
-    bot_pid = None
-    if HEARTBEAT_FILE.exists():
-        try:
-            data = json.loads(HEARTBEAT_FILE.read_text(encoding="utf-8"))
-            bot_pid = data.get("pid")
-        except (json.JSONDecodeError, OSError):
-            pass
+    """discord_bot.pyプロセスを全てkill（重複起動防止のため全プロセス対象）"""
+    killed = 0
+    # Windows側: wmicでdiscord_bot.pyを含むpython.exeのPIDを全取得してkill
+    try:
+        result = subprocess.run(
+            ["wmic", "process", "where", "name='python.exe'", "get", "processid,commandline"],
+            capture_output=True, text=True, encoding="cp932",
+            errors="replace", timeout=10,
+        )
+        for line in result.stdout.splitlines():
+            if "discord_bot.py" in line:
+                # 行末のPIDを取得
+                parts = line.strip().split()
+                if parts:
+                    pid = parts[-1]
+                    try:
+                        int(pid)  # PIDが数値か確認
+                        subprocess.run(
+                            ["taskkill", "/f", "/pid", pid],
+                            capture_output=True, timeout=10,
+                        )
+                        print(f"[Watchdog] Windows Bot (PID {pid}) をkill")
+                        killed += 1
+                    except (ValueError, Exception):
+                        pass
+    except Exception as e:
+        print(f"[Watchdog] Windows kill失敗: {e}")
 
     # WSL側: discord_bot.pyを名前で特定してkill
     try:
@@ -77,21 +107,12 @@ def _kill_bot():
                     pid = parts[1]
                     os.kill(int(pid), 9)
                     print(f"[Watchdog] WSL discord_bot.py (PID {pid}) をkill")
+                    killed += 1
     except Exception as e:
         print(f"[Watchdog] WSL kill失敗: {e}")
 
-    # Windows側: heartbeat.txtに記録されたPIDのみkill（他プロセスを巻き込まない）
-    if bot_pid:
-        try:
-            subprocess.run(
-                ["cmd.exe", "/c", f"taskkill /f /pid {bot_pid}"],
-                capture_output=True, timeout=10,
-            )
-            print(f"[Watchdog] Windows Bot (PID {bot_pid}) をkill")
-        except Exception as e:
-            print(f"[Watchdog] Windows kill失敗: {e}")
-    else:
-        print("[Watchdog] Bot PIDが不明のためWindows側killをスキップ")
+    if killed == 0:
+        print("[Watchdog] killするBotプロセスが見つかりませんでした")
 
 
 def _start_bot():
@@ -151,14 +172,18 @@ def _get_unread_messages() -> list[str]:
 
 
 def _send_discord_report(message: str):
-    """outbox.jsonに書き込んでDiscordに送信"""
+    """outbox/ディレクトリにJSONファイルを作成してDiscordに送信"""
     try:
         msg = {
             "timestamp": time.time(),
             "text": message,
             "files": [],
         }
-        OUTBOX.write_text(json.dumps(msg, ensure_ascii=False), encoding="utf-8")
+        OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
+        fname = f"{time.time():.6f}_{uuid4().hex[:8]}.json"
+        tmp = OUTBOX_DIR / (fname + ".tmp")
+        tmp.write_text(json.dumps(msg, ensure_ascii=False), encoding="utf-8")
+        tmp.rename(OUTBOX_DIR / fname)
         print(f"[Watchdog] Discordに報告送信")
     except Exception as e:
         print(f"[Watchdog] outbox書き込み失敗: {e}")
@@ -190,9 +215,15 @@ def main():
         # 再起動
         _start_bot()
 
-        # Bot起動を待機（outbox処理が可能になるまで）
-        print("[Watchdog] Bot起動待機中（15秒）...")
-        time.sleep(15)
+        # Bot起動をハートビートで確認（最大30秒、3秒間隔）
+        print("[Watchdog] Bot起動確認中...")
+        for _wait in range(10):
+            time.sleep(3)
+            if _is_bot_process_alive() and _get_heartbeat_age() < 30:
+                print(f"[Watchdog] Bot起動確認OK（{(_wait+1)*3}秒後）")
+                break
+        else:
+            print("[Watchdog] Bot起動確認タイムアウト（30秒）- 次回チェックで再試行")
 
     # 未読メッセージがある場合の報告
     if unread and bot_was_dead:

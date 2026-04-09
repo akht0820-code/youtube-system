@@ -47,11 +47,17 @@ LOGS_DIR = PROJECT_ROOT / "logs"
 PYTHON = r"C:\Users\user\AppData\Local\Programs\Python\Python311\python.exe"
 TEMP_DIR = PROJECT_ROOT / "tmp_discord"
 CHAT_LOG = TEMP_DIR / "chat.log"
-OUTBOX = TEMP_DIR / "outbox.json"
+OUTBOX = TEMP_DIR / "outbox.json"  # 後方互換（旧方式）
+OUTBOX_DIR = TEMP_DIR / "outbox"   # 新方式（複数ファイルキュー）
+INBOX_NEW_DIR = TEMP_DIR / "inbox" / "new"  # v2新規: 未処理メッセージキュー
 ERROR_FEED = TEMP_DIR / "error_feed.json"
 CHANNEL_FILE = TEMP_DIR / "channel_id.txt"
 HEARTBEAT_FILE = TEMP_DIR / "heartbeat.txt"
 LAST_MSG_FILE = TEMP_DIR / "last_discord_recv.txt"
+
+# 原子的書き込みヘルパ（v2新規）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _atomic import atomic_write_json  # noqa: E402
 
 if not TOKEN:
     print("[!] DISCORD_BOT_TOKEN が見つかりません")
@@ -73,6 +79,34 @@ if _OWNER_FILE.exists():
         OWNER_ID = int(_OWNER_FILE.read_text().strip())
     except (ValueError, OSError):
         pass
+
+
+def _write_inbox_new(message_id: int, channel_id: int, user_text: str,
+                     attachments: list[str] | None = None) -> None:
+    """v2新規: inbox/new/ に原子的に書き込む。
+
+    ファイル名: {unix_ts_ns}_{channel_id}_{message_id}.json
+    - unix_ts_ns 先頭でシェルソート順と時系列を一致させる
+    - channel_id 分離で将来のマルチソース統合に備える
+    """
+    try:
+        ts_received = time.time()
+        ts_ns = time.time_ns()
+        fname = f"{ts_ns:019d}_{channel_id}_{message_id}.json"
+        payload = {
+            "schema_version": 1,
+            "message_id": str(message_id),
+            "channel_id": str(channel_id),
+            "ts_received": ts_received,
+            "user": user_text,
+            "text": user_text,  # 互換: user フィールドと同値
+            "attachments": list(attachments or []),
+            "claim": None,
+        }
+        atomic_write_json(INBOX_NEW_DIR / fname, payload)
+    except Exception as e:
+        # inbox書き込み失敗は chat.log フォールバックが効くため log のみ
+        print(f"[Bot] inbox/new/ 書き込み失敗: {e}")
 
 
 def _log_chat(sender: str, text: str, attachments: list[str] | None = None):
@@ -160,72 +194,108 @@ async def _preventive_reconnect():
 
 # --- outbox監視（Claude Code → Discord）---
 
+async def _send_outbox_message(data: dict, source_path: Path | None = None):
+    """outboxメッセージ1件をDiscordに送信する共通処理"""
+    global _last_user_message_id
+    text = data.get("text", "")
+    files_to_send = data.get("files", [])
+    if not text and not files_to_send:
+        return False
+
+    # チャンネルID取得
+    if not CHANNEL_FILE.exists():
+        return False
+    channel_id = int(CHANNEL_FILE.read_text().strip())
+    channel = bot_client.get_channel(channel_id)
+    if channel is None:
+        return False
+
+    # ファイル添付
+    discord_files = []
+    for fp in files_to_send:
+        p = Path(fp)
+        if p.exists():
+            discord_files.append(discord.File(str(p), filename=p.name))
+
+    # 送信（2000文字分割）
+    while text:
+        if len(text) <= 1900:
+            chunk = text
+            text = ""
+        else:
+            split_at = text.rfind("\n", 0, 1900)
+            if split_at == -1:
+                split_at = 1900
+            chunk = text[:split_at]
+            text = text[split_at:].lstrip("\n")
+
+        kwargs = {"content": chunk}
+        if not text and discord_files:
+            kwargs["files"] = discord_files
+        await channel.send(**kwargs)
+
+    # リアクション除去（最新ユーザーメッセージから）
+    if _last_user_message_id and channel_id:
+        try:
+            msg = await channel.fetch_message(_last_user_message_id)
+            await msg.remove_reaction("\U0001F4AD", bot_client.user)
+        except Exception:
+            pass
+
+    # 送信元ファイルを削除
+    if source_path and source_path.exists():
+        source_path.unlink(missing_ok=True)
+    return True
+
+
 async def _outbox_watcher():
-    """outbox.jsonを監視して、内容があればDiscordに送信"""
-    last_ts = 0.0
+    """outbox/ディレクトリ + 旧outbox.json を監視してDiscordに送信"""
+    last_legacy_ts = 0.0
+    OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
     while True:
         await asyncio.sleep(1)
         try:
-            if not OUTBOX.exists():
-                continue
+            # 全メッセージを (timestamp, data, source_path) で収集
+            pending = []
+
+            # 新方式: outbox/ ディレクトリ内のJSONファイル
             try:
-                data = json.loads(OUTBOX.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                # 書き込み途中の可能性 → 次のサイクルでリトライ
-                continue
-            ts = data.get("timestamp", 0)
-            if ts <= last_ts:
-                continue
+                for f in OUTBOX_DIR.iterdir():
+                    # .tmpは古いもの(10分超)だけ掃除
+                    if f.name.endswith(".tmp"):
+                        try:
+                            if time.time() - f.stat().st_mtime > 600:
+                                f.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        continue
+                    if f.suffix != ".json":
+                        continue
+                    try:
+                        data = json.loads(f.read_text(encoding="utf-8"))
+                        ts = data.get("timestamp", 0)
+                        pending.append((ts, data, f))
+                    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+                        continue
+            except FileNotFoundError:
+                OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
 
-            text = data.get("text", "")
-            files_to_send = data.get("files", [])
-            if not text and not files_to_send:
-                continue
-
-            # チャンネルID取得
-            if not CHANNEL_FILE.exists():
-                continue
-            channel_id = int(CHANNEL_FILE.read_text().strip())
-            channel = bot_client.get_channel(channel_id)
-            if channel is None:
-                continue
-
-            # ファイル添付
-            discord_files = []
-            for fp in files_to_send:
-                p = Path(fp)
-                if p.exists():
-                    discord_files.append(discord.File(str(p), filename=p.name))
-
-            # 送信（2000文字分割）
-            while text:
-                if len(text) <= 1900:
-                    chunk = text
-                    text = ""
-                else:
-                    split_at = text.rfind("\n", 0, 1900)
-                    if split_at == -1:
-                        split_at = 1900
-                    chunk = text[:split_at]
-                    text = text[split_at:].lstrip("\n")
-
-                kwargs = {"content": chunk}
-                if not text and discord_files:
-                    kwargs["files"] = discord_files
-                await channel.send(**kwargs)
-
-            # 💭リアクション除去（最新ユーザーメッセージから）
-            if _last_user_message_id and channel_id:
+            # 後方互換: 旧outbox.json
+            if OUTBOX.exists():
                 try:
-                    msg = await channel.fetch_message(_last_user_message_id)
-                    await msg.remove_reaction("\U0001F4AD", bot_client.user)
-                except Exception:
+                    data = json.loads(OUTBOX.read_text(encoding="utf-8"))
+                    ts = data.get("timestamp", 0)
+                    if ts > last_legacy_ts:
+                        pending.append((ts, data, OUTBOX))
+                except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
 
-            # 送信成功 → タイムスタンプを更新して再送防止
-            last_ts = ts
-            # 送信済み削除
-            OUTBOX.unlink(missing_ok=True)
+            # タイムスタンプ順（古い順）に送信
+            pending.sort(key=lambda x: x[0])
+            for ts, data, src in pending:
+                if await _send_outbox_message(data, source_path=src):
+                    if src == OUTBOX:
+                        last_legacy_ts = ts
         except Exception as e:
             print(f"[Bot] outbox送信エラー: {e}")
 
@@ -464,6 +534,14 @@ async def on_message(message: discord.Message):
     att_names = [a.filename for a in message.attachments]
     _log_chat("User", content, att_names if att_names else None)
 
+    # v2新規: inbox/new/ にも書き出し（Claude側の機械処理用、chat.log は人間閲覧用に残す）
+    _write_inbox_new(
+        message_id=message.id,
+        channel_id=message.channel.id,
+        user_text=content,
+        attachments=att_names if att_names else None,
+    )
+
     # ntfy経由でClaude Codeに即時通知（本文は送らずpingのみ）
     try:
         import urllib.request
@@ -529,6 +607,28 @@ async def on_message(message: discord.Message):
 
 
 if __name__ == "__main__":
+    # 重複起動防止: 既存のdiscord_bot.pyプロセスをチェック
+    try:
+        _r = subprocess.run(
+            ["wmic", "process", "where", "name='python.exe'", "get", "processid,commandline"],
+            capture_output=True, text=True, encoding="cp932",
+            errors="replace", timeout=10,
+        )
+        _my_pid = os.getpid()
+        for _line in _r.stdout.splitlines():
+            if "discord_bot.py" in _line:
+                _parts = _line.strip().split()
+                if _parts:
+                    try:
+                        _other_pid = int(_parts[-1])
+                        if _other_pid != _my_pid:
+                            print(f"[Bot] 既存プロセス(PID {_other_pid})を検出 → kill")
+                            subprocess.run(["taskkill", "/f", "/pid", str(_other_pid)],
+                                           capture_output=True, timeout=10)
+                    except (ValueError, Exception):
+                        pass
+    except Exception:
+        pass
     print("[Bot] 起動中...")
     # 自動再接続ループ: 切断・例外時にbackoff付きで再試行
     _backoff = 5

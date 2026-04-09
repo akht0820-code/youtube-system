@@ -1,8 +1,20 @@
 # YouTube動画データ収集モジュール
 
+import re
 from datetime import datetime
 
 from analytics_base import StatsCollector
+
+
+def _parse_iso8601_duration(duration: str) -> int:
+    """ISO 8601 duration (PT1H5M30S) を秒数に変換する"""
+    if not duration:
+        return 0
+    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration)
+    if not m:
+        return 0
+    h, mi, s = (int(g) if g else 0 for g in m.groups())
+    return h * 3600 + mi * 60 + s
 
 
 def _fetch_all_video_stats(youtube) -> list[dict]:
@@ -41,17 +53,21 @@ def _fetch_all_video_stats(youtube) -> list[dict]:
     for i in range(0, len(video_ids), 50):
         batch = video_ids[i : i + 50]
         stats_res = youtube.videos().list(
-            part="snippet,statistics",
+            part="snippet,statistics,contentDetails",
             id=",".join(batch),
         ).execute()
 
         for item in stats_res.get("items", []):
             snippet    = item.get("snippet", {})
             statistics = item.get("statistics", {})
+            content    = item.get("contentDetails", {})
             video_id   = item["id"]
 
             published_raw = snippet.get("publishedAt", "")
             published_at  = published_raw[:10] if published_raw else ""
+
+            # ISO 8601 duration (PT5M30S) → 秒数に変換
+            duration_sec = _parse_iso8601_duration(content.get("duration", ""))
 
             videos.append({
                 "video_id":     video_id,
@@ -60,6 +76,7 @@ def _fetch_all_video_stats(youtube) -> list[dict]:
                 "views":        int(statistics.get("viewCount",    0)),
                 "likes":        int(statistics.get("likeCount",    0)),
                 "comments":     int(statistics.get("commentCount", 0)),
+                "duration_sec": duration_sec,
                 "url":          f"https://youtu.be/{video_id}",
             })
 

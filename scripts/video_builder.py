@@ -119,7 +119,7 @@ _KAI_EMOTION_PARTS: dict[str, dict[str, dict[str, str]]] = {
     #     15=穏やか微笑, 18=食いしばり, 20=大笑顔, 27=閉じ無表情, 30=小微笑
     "魔理沙": {
         "normal":      {"face": "01a", "eyes": "00",  "mc": "00",  "mo": "00b"},
-        "happy":       {"face": "01a", "eyes": "11",  "mc": "01",  "mo": "02"},
+        "happy":       {"face": "01a", "eyes": "08",  "mc": "01",  "mo": "02"},  # 目11(閉じ)→08(半開き/黒目あり)に変更
         "surprised":   {"face": "01a", "eyes": "07",  "mc": "00",  "mo": "07"},
         "serious":     {"face": "01a", "eyes": "00b", "mc": "00",  "mo": "00b"},
         "worried":     {"face": "01a", "eyes": "06",  "mc": "15",  "mo": "00b"},
@@ -128,12 +128,12 @@ _KAI_EMOTION_PARTS: dict[str, dict[str, dict[str, str]]] = {
         "embarrassed": {"face": "06a", "eyes": "04",  "mc": "15",  "mo": "03"},
         "thinking":    {"face": "01a", "eyes": "02",  "mc": "00",  "mo": "00a"},
         "sad":         {"face": "01a", "eyes": "03",  "mc": "15",  "mo": "03"},
-        "relieved":    {"face": "01a", "eyes": "10",  "mc": "30",  "mo": "03"},
+        "relieved":    {"face": "01a", "eyes": "02",  "mc": "30",  "mo": "03"},  # 閉じ目10→やや細02に変更（黒目表示）
         "angry":       {"face": "01a", "eyes": "26",  "mc": "18",  "mo": "12"},
-        "curious":     {"face": "01a", "eyes": "22",  "mc": "00",  "mo": "03"},
+        "curious":     {"face": "01a", "eyes": "07",  "mc": "00",  "mo": "03"},  # 目22(黒目なし)→07(やや見開き/黒目あり)に変更
         "awkward":     {"face": "06a", "eyes": "28",  "mc": "15",  "mo": "00a"},
-        "smug":        {"face": "01a", "eyes": "24",  "mc": "13",  "mo": "06"},
-        "joyful":      {"face": "01a", "eyes": "11",  "mc": "20",  "mo": "02"},
+        "smug":        {"face": "01a", "eyes": "02",  "mc": "30",  "mo": "00b"},  # 目24(白目)→02(やや細/黒目あり)に変更
+        "joyful":      {"face": "01a", "eyes": "08",  "mc": "20",  "mo": "02"},  # 目11(閉じ)→08(半開き/黒目あり)に変更
     },
 }
 
@@ -195,7 +195,7 @@ _MOUTH_SEQUENCE: dict[str, dict[str, list[str]]] = {
         "angry":       ["18",  "00a", "12",  "12",  "00a", "18"],
         "curious":     ["00",  "00a", "03",  "03",  "00a", "00"],
         "awkward":     ["15",  "00a", "00a", "03",  "00a", "15"],
-        "smug":        ["13",  "00a", "06",  "06",  "00a", "13"],
+        "smug":        ["30",  "00a", "00b", "00b", "00a", "30"],  # ニヤリ口→穏やか口に変更
         "joyful":      ["20",  "00a", "02",  "02",  "00a", "20"],
     },
 }
@@ -397,17 +397,7 @@ def _build_anim_overlay(emotion: str, char: str, step: int) -> "tuple | None":
         draw.text((text_x + 3, text_y + 3), text, font=font_e, fill=(0, 0, 0, 120))
         draw.text((text_x, text_y), text, font=font_e, fill=(80, 120, 200, alpha))
 
-    elif emotion == "smug":
-        # キラリマーク（☆）
-        alpha = int(180 + 70 * abs(math.sin(t * math.pi * 1.5)))
-        font_e = load_font(72)
-        text = "☆"
-        bbox_e = font_e.getbbox(text)
-        tw = bbox_e[2] - bbox_e[0]
-        text_x = (size_w - tw) // 2
-        text_y = 10
-        draw.text((text_x + 3, text_y + 3), text, font=font_e, fill=(0, 0, 0, 120))
-        draw.text((text_x, text_y), text, font=font_e, fill=(255, 200, 0, alpha))
+    # smug: キラリエフェクト削除（穏やかノーマルに変更済み）
 
     else:
         return None
@@ -879,6 +869,10 @@ def compose_frame(character: str, text: str,
             # いらすとや画像を中央上部に配置
             ira_key = str(irasutoya_img_path) if irasutoya_img_path else ""
             if ira_key not in _irasutoya_cache:
+                # キャッシュサイズ制限（古い10件を削除して再ロード頻度を抑える）
+                if len(_irasutoya_cache) >= 40:
+                    for _old_ik in list(_irasutoya_cache)[:10]:
+                        del _irasutoya_cache[_old_ik]
                 _irasutoya_cache[ira_key] = _load_irasutoya_panel(irasutoya_img_path)
             ira_panel = _irasutoya_cache.get(ira_key)
             if ira_panel:
@@ -1272,6 +1266,11 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
                 best_line = -1
                 best_score = 0
                 # characterフィールドで魔理沙の行を検索（speakerも後方互換で対応）
+                # 溜め表現パターン（結論前の煽り行 → ネタバレ防止のため減点）
+                _TAME_RE = re.compile(
+                    r'(それは|それが|なんと|実は|ずばり|答えは|正体は|頂点|結論)'
+                    r'.*(\.{2,}|…|！$|か？$|だ！$)'
+                )
                 for _li, line_data in enumerate(sec_lines):
                     if _li in used_lines:
                         continue
@@ -1280,6 +1279,9 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
                         continue
                     line_text = line_data.get("text", "")
                     score = sum(1 for kw in _wb_keywords if kw in line_text)
+                    # 溜め行は減点（結論前の煽りにマッチしないよう）
+                    if _TAME_RE.search(line_text):
+                        score = max(0, score - 2)
                     if score > best_score:
                         best_score = score
                         best_line = _li
@@ -1607,7 +1609,10 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
     import time as _time_mod
     _ts = int(_time_mod.time())
     _temp_speech = output_path.with_suffix(f"._{_ts}_temp_speech.wav")
-    _speech_filter = output_path.with_suffix("._speech_filter.txt")
+    # フィルタファイルは日本語パスだとffmpegが読めないのでtempディレクトリに配置
+    import tempfile as _tempfile
+    _filter_tmpdir = Path(_tempfile.gettempdir())
+    _speech_filter = _filter_tmpdir / f"_speech_filter_{_ts}.txt"
 
     # セリフ用filter_complex: 各WAVをリサンプル→無音挿入→concat
     # 入力数が多くてもfilterはファイル経由なので問題ない
@@ -1617,8 +1622,8 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
     _speech_silence_idx = 0
 
     # concat demuxer用ファイルリストを生成（コマンドラインに-iを並べない）
-    _concat_list = output_path.with_suffix("._concat_list.txt")
-    _resampled_dir = output_path.parent / f"._{_ts}_resampled"
+    _concat_list = output_path.resolve().with_suffix("._concat_list.txt")
+    _resampled_dir = output_path.resolve().parent / f"._{_ts}_resampled"
     _resampled_dir.mkdir(exist_ok=True)
 
     # 各セリフWAVを44100Hz/stereo/s16にリサンプルし、無音と交互にリスト化
@@ -1691,7 +1696,7 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
 
     # ── ステップ2b: speech + BGM + SE を合成 ──
     _temp_audio = output_path.with_suffix(f"._{_ts}_temp_audio.wav")
-    _filter_script = output_path.with_suffix("._filter.txt")
+    _filter_script = _filter_tmpdir / f"_filter_{_ts}.txt"
     _input_args: list[str] = []
     _filter_lines: list[str] = []
     _input_idx = 0
@@ -1720,22 +1725,18 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
         _bgm_labels.append(f"[{_blabel}]")
         _input_idx += 1
 
-    # SE入力（amovieでfilter内から直接読み込み、-iを使わない）
-    # これによりコマンドライン長を大幅に削減（WinError 206対策）
+    # SE入力（-iで指定、フィルタはファイル経由なのでコマンドライン長は-i分のみ）
     _se_labels: list[str] = []
     for _si, (_se_path, _se_start, _se_vol) in enumerate(_se_entries):
         _delay_ms = int(_se_start * 1000)
         _se_lbl = f"se{_si}"
-        # amovieのパスはfilter_complex_script経由なのでコマンドライン長に影響しない
-        # filtergraph構文文字をエスケープ（: , ; [ ] ' とバックスラッシュ）
-        _escaped = str(_se_path).replace("\\", "/")
-        for _ch in (":", "'", ",", ";", "[", "]"):
-            _escaped = _escaped.replace(_ch, f"\\{_ch}")
+        _input_args.extend(["-i", str(_se_path)])
         _filter_lines.append(
-            f"amovie={_escaped},aresample=44100,aformat=sample_fmts=s16:channel_layouts=stereo,"
+            f"[{_input_idx}]aresample=44100,aformat=sample_fmts=s16:channel_layouts=stereo,"
             f"volume={_se_vol},adelay={_delay_ms}|{_delay_ms}[{_se_lbl}]"
         )
         _se_labels.append(f"[{_se_lbl}]")
+        _input_idx += 1
 
     # 全トラックをamixで合成（normalize=0で入力数による音量低下を防止）
     _all_mix = ["[speech]"] + _bgm_labels + _se_labels
@@ -1767,7 +1768,7 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
     _cmd_len = len(_sp_check.list2cmdline(_mix_cmd))
     if _cmd_len > 28000:
         print(f"  [警告] ffmpegコマンド長 {_cmd_len} 文字（上限32768）")
-    print(f"  ffmpegで音声を合成しています（入力{_input_idx}トラック, SE={len(_se_entries)}件amovie）...")
+    print(f"  ffmpegで音声を合成しています（入力{_input_idx}トラック, SE={len(_se_entries)}件）...")
     _mix_log = output_path.with_suffix("._audio_mix.log")
     with open(_mix_log, "w", encoding="utf-8") as _mlf:
         try:
@@ -1839,6 +1840,7 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
     _prev_char = ""  # 前の行の話者
     _prev_emotion = "normal"
     _prev_ira_path = None  # 前の行のいらすとや画像（無音期間中に維持）
+    _wb_img = None  # ホワイトボード画像（無音中は前の状態を維持）
 
     for _i, (_entry, _dur) in enumerate(zip(line_entries, _clip_durations)):
         _, _char, _text, _audio_path, _ira_path, _emotion = _entry
@@ -1947,13 +1949,17 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
                 _sched = _blink_speaking[_cname] if _is_speaker else _blink_listening[_cname]
                 _blink_eyes[_cname] = _get_blink_eye(_cname, _abs_t, _sched)
 
-            # ホワイトボード判定（言い終わった直後＝次の行の無音区間で即表示）
+            # ホワイトボード判定（発話開始まで遅延: 無音中は前の状態を維持してネタバレ防止）
             _wb_info = _wb_schedule.get(_i)
-            _wb_img_cur = None
-            if _wb_info:
-                _wb_title, _wb_items, _wb_is_summary = _wb_info
-                _wb_img_cur = _render_whiteboard(_wb_title, _wb_items, is_summary=_wb_is_summary)
-            _wb_img = _wb_img_cur
+            if _in_silence:
+                # 無音区間中は前の行のホワイトボード状態を維持（字幕も前の行なので同期）
+                pass  # _wb_img は前のループのまま
+            else:
+                _wb_img_cur = None
+                if _wb_info:
+                    _wb_title, _wb_items, _wb_is_summary = _wb_info
+                    _wb_img_cur = _render_whiteboard(_wb_title, _wb_items, is_summary=_wb_is_summary)
+                _wb_img = _wb_img_cur
 
             # いらすとや画像: 無音中は前の行の画像を維持（字幕と同期）
             _show_ira = (_prev_ira_path if _in_silence and _i > 0 else _ira_path)
@@ -1987,12 +1993,13 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
                 ) from _pipe_err
             _total_frames_enc += 1
 
-            # 1500フレームごとにGC実行 + メモリチェック + 進捗表示
-            if _total_frames_enc % 1500 == 0:
-                gc.collect()
+            # 500フレームごとにメモリチェック、1500フレームごとにGC + 進捗表示
+            if _total_frames_enc % 500 == 0:
+                if _total_frames_enc % 1500 == 0:
+                    gc.collect()
                 _total_target = round(total_duration * FPS)
                 _pct = _total_frames_enc / max(1, _total_target) * 100
-                # メモリ残量チェック（1GB未満で緊急キャッシュクリア）
+                # メモリ残量チェック（3GB未満で段階的キャッシュ圧縮）
                 try:
                     _mem_avail = 9999
                     if sys.platform == "win32":
@@ -2026,7 +2033,14 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
                                     _mem_avail = min(_mem_avail, _win_avail)
                             except Exception:
                                 pass
+                    if _mem_avail < 3072:
+                        # 3GB未満: irasutoyaキャッシュを半分に圧縮
+                        if len(_irasutoya_cache) > 20:
+                            for _old_ik in list(_irasutoya_cache)[:len(_irasutoya_cache)//2]:
+                                del _irasutoya_cache[_old_ik]
+                        gc.collect()
                     if _mem_avail < 2048:
+                        # 2GB未満: 全キャッシュクリア（緊急）
                         _kai_char_cache.clear()
                         _wb_cache.clear()
                         _irasutoya_cache.clear()
@@ -2034,7 +2048,8 @@ def build_video(script: dict, audio_dir: Path, output_path: Path,
                         print(f"  [メモリ警告] 空き{_mem_avail}MB(<2GB) → キャッシュ全クリア")
                 except Exception:
                     pass
-                print(f"  エンコード進捗: {_total_frames_enc}/{_total_target}フレーム ({_pct:.0f}%)")
+                if _total_frames_enc % 1500 == 0:
+                    print(f"  エンコード進捗: {_total_frames_enc}/{_total_target}フレーム ({_pct:.0f}%)")
 
         # 次の行のために今の状態を保存
         _prev_text = _text

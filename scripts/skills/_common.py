@@ -159,6 +159,13 @@ def update_phase(
         p["started_at"] = datetime.now().isoformat()
     elif status in ("completed", "failed"):
         p["completed_at"] = datetime.now().isoformat()
+    elif status == "pending":
+        # Codex Round5: pending へのリセット時は stale な成果物参照・エラー・
+        # started_at/completed_at を全てクリアする（再実行のため）
+        p["started_at"] = None
+        p["completed_at"] = None
+        p["outputs"] = []
+        p["error"] = None
 
     if outputs is not None:
         p["outputs"] = outputs
@@ -258,18 +265,37 @@ def get_llm():
 # ── run_dir ユーティリティ ──────────────────────────────────
 
 def get_script_json(run_dir: Path) -> dict:
-    """run_dir 内の台本JSONを読み込む"""
+    """run_dir 内の台本JSONを読み込む。
+
+    manifest の script_gen.outputs が唯一の真実。
+    サイレントフォールバック禁止（2026-04-09事故対策）:
+    過去に日付プレフィックス一致のglob fallbackで無関係な別runのJSONを
+    掴んで「差し替え対象と無関係な動画」が生成された事故があったため、
+    manifest記載のoutputsで見つからない場合は必ず FileNotFoundError。
+    """
     manifest = load_manifest(run_dir)
     outputs = manifest["phases"]["script_gen"].get("outputs", [])
+    if not outputs:
+        raise FileNotFoundError(
+            f"台本JSONが manifest に登録されていません: {run_dir} "
+            f"(script_gen フェーズが未実行または失敗している可能性)"
+        )
+    # Codex Round5: run_dir 相対 / run_dir.parent 相対 / 絶対 を全て試す
+    # (現状は run_dir.parent 基準で保存されているが将来の変更に耐性を持たせる)
+    run_dir_p = Path(run_dir)
     for out in outputs:
-        path = Path(run_dir).parent / out if not Path(out).is_absolute() else Path(out)
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-    # フォールバック: run_dir の親にある .json を探す
-    run_path = Path(run_dir)
-    for p in run_path.parent.glob(f"{run_path.name.split('_')[0]}*.json"):
-        return json.loads(p.read_text(encoding="utf-8"))
-    raise FileNotFoundError(f"台本JSONが見つかりません: {run_dir}")
+        out_p = Path(out)
+        if out_p.is_absolute():
+            candidates = [out_p]
+        else:
+            candidates = [run_dir_p / out_p, run_dir_p.parent / out_p]
+        for path in candidates:
+            if path.exists():
+                return json.loads(path.read_text(encoding="utf-8"))
+    raise FileNotFoundError(
+        f"台本JSONが manifest outputs に記載されているが実体なし: {run_dir} "
+        f"outputs={outputs}"
+    )
 
 
 def ensure_scripts_path():
@@ -391,7 +417,8 @@ def _taskkill_elevated(pids: list[int]) -> bool:
             schtasks = "schtasks.exe"
         result = _sp.run(
             [schtasks, "/run", "/tn", "YukkuriProcessKill"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, encoding="cp932",
+            errors="replace", timeout=15,
         )
         if result.returncode == 0:
             # タスク完了を待つ（最大10秒）
@@ -415,7 +442,8 @@ def _kill_wsl_bloat() -> list[str]:
             for proc_name in _KILLABLE_WIN_PROCESSES:
                 result = _sp.run(
                     ["taskkill", "/IM", proc_name, "/F"],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True, text=True, encoding="cp932",
+                    errors="replace", timeout=10,
                 )
                 if result.returncode == 0:
                     killed.append(proc_name)
@@ -463,7 +491,8 @@ def _kill_wsl_bloat() -> list[str]:
         try:
             result = _sp.run(
                 ["/mnt/c/Windows/System32/tasklist.exe"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, text=True, encoding="cp932",
+                errors="replace", timeout=10,
             )
             kill_pids = []
             kill_names = []
@@ -493,7 +522,8 @@ def force_kill_pipeline_processes() -> list[str]:
     try:
         result = _sp.run(
             ["/mnt/c/Windows/System32/tasklist.exe"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding="cp932",
+            errors="replace", timeout=10,
         )
     except Exception:
         return killed

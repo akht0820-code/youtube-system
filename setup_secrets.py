@@ -22,6 +22,10 @@ SECRETS = {
         "label": "Google Gemini API キー",
         "hint":  "Google AI Studio (aistudio.google.com) で取得",
     },
+    "ANTHROPIC_API_KEY": {
+        "label": "Anthropic Claude API キー（Gemini制限時フォールバック用）",
+        "hint":  "console.anthropic.com で取得 — 登録しておくとGemini制限時に自動でClaudeへ切り替わる",
+    },
 }
 
 

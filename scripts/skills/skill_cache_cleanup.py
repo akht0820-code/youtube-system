@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from skills._common import ensure_scripts_path, SkillLogger, load_manifest
+from skills._common import ensure_scripts_path, SkillLogger, load_manifest, _safe_unlink, _safe_rmtree
 
 ensure_scripts_path()
 from notifier import notify_error
@@ -51,28 +51,45 @@ def get_pronunciation_hashes() -> dict[str, str]:
 
 # ── クリーンアップ対象別の関数 ────────────────────────────
 
+def _get_in_progress_dirs() -> set[Path]:
+    """現在 in_progress のrun_dirを返す（並行実行保護用）"""
+    active = set()
+    if not OUTPUT_DIR.exists():
+        return active
+    for d in OUTPUT_DIR.iterdir():
+        if not d.is_dir() or not re.match(r"\d{8}_\d{6}_", d.name):
+            continue
+        pj = d / "pipeline.json"
+        if pj.exists():
+            try:
+                m = json.loads(pj.read_text(encoding="utf-8"))
+                if m.get("status") == "in_progress":
+                    active.add(d.resolve())
+            except Exception:
+                pass
+    return active
+
+
 def cleanup_temp_files(dry_run: bool = False) -> list[str]:
-    """output/ 以下の一時ファイル・ディレクトリを削除する"""
-    import shutil
+    """output/ 以下の一時ファイル・ディレクトリを削除する（in_progress runはスキップ）"""
     deleted = []
+    active_dirs = _get_in_progress_dirs()
     for pattern in _TEMP_PATTERNS:
         for f in OUTPUT_DIR.rglob(pattern):
             if f.is_file():
+                if any(f.resolve().is_relative_to(ad) for ad in active_dirs):
+                    continue
                 deleted.append(str(f))
                 if not dry_run:
-                    try:
-                        f.unlink()
-                    except OSError as e:
-                        print(f"  [警告] 削除失敗: {f} ({e})")
+                    _safe_unlink(f)
     for pattern in TEMP_DIR_GLOBS:
         for d in OUTPUT_DIR.rglob(pattern):
             if d.is_dir():
+                if any(d.resolve().is_relative_to(ad) for ad in active_dirs):
+                    continue
                 deleted.append(str(d))
                 if not dry_run:
-                    try:
-                        shutil.rmtree(d)
-                    except OSError as e:
-                        print(f"  [警告] ディレクトリ削除失敗: {d} ({e})")
+                    _safe_rmtree(d)
     return deleted
 
 
@@ -131,7 +148,11 @@ def cleanup_stale_wav_for_run(run_dir: Path, dry_run: bool = False) -> list[str]
         return deleted
 
     # マニフェストに保存されたハッシュと現在のハッシュを比較
-    saved_hashes = manifest.get("config_hash", {})
+    # 新形式: phases.pronunciation.config_hashes / 旧形式: config_hash
+    saved_hashes = (
+        manifest.get("phases", {}).get("pronunciation", {}).get("config_hashes")
+        or manifest.get("config_hash", {})
+    )
     if not saved_hashes:
         return deleted  # ハッシュ未記録 = 初回 → 削除不要
 
@@ -150,10 +171,7 @@ def cleanup_stale_wav_for_run(run_dir: Path, dry_run: bool = False) -> list[str]
     for f in wav_files:
         deleted.append(str(f))
         if not dry_run:
-            try:
-                f.unlink()
-            except OSError:
-                pass
+            _safe_unlink(f)
 
     if deleted:
         # pipeline.json の tts フェーズをリセット

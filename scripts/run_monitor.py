@@ -188,7 +188,7 @@ def _youtube_safety_check() -> list[str]:
     try:
         from auth_utils import get_credentials
         from googleapiclient.discovery import build
-        from youtube_uploader import delete_auto_captions
+        from youtube_uploader import delete_auto_captions, is_test_video
 
         youtube = build("youtube", "v3", credentials=get_credentials())
         jst = timezone(timedelta(hours=9))
@@ -239,16 +239,20 @@ def _youtube_safety_check() -> list[str]:
                     pass
 
             if is_today:
-                today_videos.append({
+                _entry = {
                     "id": vid,
                     "title": title,
                     "privacy": privacy,
                     "duration": dur_sec,
                     "publish_at": publish_at_str,
-                })
+                    "is_test": is_test_video(title),
+                }
+                today_videos.append(_entry)
 
-        # 検査1: 短すぎる動画を非公開化
+        # 検査1: 短すぎる動画を非公開化（テスト動画は対象外）
         for v in today_videos:
+            if v.get("is_test"):
+                continue
             if v["duration"] > 0 and v["duration"] < _MIN_DURATION_SEC:
                 _set_private(youtube, v["id"])
                 msg = f"短すぎる動画を非公開化: {v['title'][:30]} ({v['duration']}秒)"
@@ -256,8 +260,9 @@ def _youtube_safety_check() -> list[str]:
                 print(f"  [自動修復] {msg}")
 
         # 検査2: 重複動画（短い方を非公開化、同じ尺なら後からの方を非公開化）
-        active = [v for v in today_videos if v["id"] not in
-                  [a.split("(")[0] for a in actions]]  # 既に非公開化したものを除外
+        # テスト動画と既に非公開化済みを除外
+        active = [v for v in today_videos if not v.get("is_test") and v["id"] not in
+                  [a.split("(")[0] for a in actions]]
         if len(active) >= 2:
             # 最も長い動画を残し、他を非公開化
             active.sort(key=lambda v: v["duration"], reverse=True)

@@ -1,8 +1,8 @@
 name: 動画自動生成・投稿
 
 on:
-  schedule:
-    - cron: '0 9 * * *'  # 毎日 18:00 JST（UTC+9 → UTC 9:00）
+  # schedule:
+  #   - cron: '0 9 * * *'  # 毎日 18:00 JST（UTC+9 → UTC 9:00）  ← 最適化中のため一時停止
   workflow_dispatch:       # GitHub UI から手動実行も可能
 
 jobs:
@@ -50,7 +50,7 @@ jobs:
           NTFY_TOPIC:      ${{ secrets.NTFY_TOPIC }}
           SPREADSHEET_ID:  ${{ secrets.SPREADSHEET_ID }}
           # モデル設定
-          GEMINI_MODEL_SIMPLE:   gemini-2.0-flash-lite
+          GEMINI_MODEL_SIMPLE:   gemini-2.0-flash
           GEMINI_MODEL_STANDARD: gemini-2.5-flash
           GEMINI_MODEL_QUALITY:  gemini-2.5-flash
           # 分析設定

@@ -92,8 +92,14 @@ def main():
     parser.add_argument("--publish-time",  type=str, default="", help="指定時刻に予約投稿（例: 18:00）")
     parser.add_argument("--no-upload",     action="store_true",  help="アップロードをスキップ")
     parser.add_argument("--script-file",   type=str, default="", help="外部台本JSONファイルのパス")
-    parser.add_argument("--resume",        action="store_true",  help="最新の失敗/未完了run_dirから再開")
+    parser.add_argument("--resume",        action="store_true",  help="当日の失敗/未完了run_dirから再開（対象なしは失敗終了）")
     args = parser.parse_args()
+
+    # 注: --auto と --resume の併用は run.bat のリトライフローで使用される。
+    # ただし成立条件は「初回実行が run_dir と pipeline.json を作成した後に失敗した場合」のみ。
+    # run_dir 作成前（テーマ選定/プリフライト/notify_start 等）で落ちた場合は2回目以降も対象なし即死する。
+    # 事故の根本原因は併用そのものではなく、--resume 対象なし時のサイレントフォールバック。
+    # 後段（L126付近）で対象なし時に sys.exit(1) する対策を取る。
 
     # ── 1日1本ガード ──────────────────────────────────────
     _lock_path = Path(__file__).parent.parent / "logs" / "last_upload_date.txt"
@@ -123,24 +129,72 @@ def main():
                     print(f"  スキップ: {_ph} (完了済み)")
             _resuming = True
         else:
-            print("[再開モード] 未完了のrun_dirが見つかりません → 新規実行します")
+            # Step1: サイレントフォールバック禁止。
+            # 以前は「新規実行します」と表示して新テーマ生成に進んでいたが、
+            # 2026-04-09に『壊れた動画の差し替え目的で --resume 指定 → 完了済みrunのため
+            # 対象なし判定 → 新テーマで全く無関係な動画を生成開始』という重大事故が発生。
+            # --resume は意図が明確な操作なので、対象なしは必ず失敗終了する。
+            # 注意: _find_resumable_run() は『当日』かつ status=in_progress/failed のみ対象。
+            #       完了済みrun や前日以前のrun は候補にならない。
+            print("エラー: --resume 対象の未完了run_dirが見つかりません。")
+            print("  条件: 当日(YYYYMMDD)作成 かつ status in ('in_progress','failed')")
+            print("  完了済みrunや前日以前のrunはこの条件では対象外です。")
+            print("  新規生成したい場合: --resume を外して実行してください。")
+            print("  既存runの特定フェーズを個別実行したい場合:")
+            print("    scripts/skills/skill_video_build.py --run-dir <path> などの")
+            print("    個別スキルを直接実行してください。")
+            sys.exit(1)
 
     # ── テーマ決定 ────────────────────────────────────────
     _external_script = None
     if _resuming:
         theme = _resume_manifest["theme"]
     elif args.script_file:
+        # fail-closed: 読込失敗/schema不備は exit(1)
+        # 2026-04-09事故対策: 以前は失敗時にAI新規生成へサイレントフォールバックしていた
+        # が、typo/破損/エンコーディング違い/schema崩れで別テーマの動画が作られる穴
+        # だったため撤去。明示指定された入力の失敗は必ず失敗終了する。
         try:
             with open(args.script_file, encoding="utf-8") as f:
                 _external_script = json.load(f)
-            print(f"外部台本JSONを読み込みました: {args.script_file}")
+        except FileNotFoundError:
+            print(f"エラー: 外部台本JSONが見つかりません: {args.script_file}")
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            print(f"エラー: 外部台本JSONのパース失敗: {args.script_file}")
+            print(f"  {e}")
+            sys.exit(1)
         except Exception as e:
-            print(f"[エラー] 外部台本JSON読み込み失敗: {e} → AI生成にフォールバック")
-            _external_script = None
+            print(f"エラー: 外部台本JSON読込失敗: {args.script_file}")
+            print(f"  {e}")
+            sys.exit(1)
+        # 最低限のschema検証
+        _errs = []
+        if not isinstance(_external_script, dict):
+            _errs.append("ルートがdictでない")
+        else:
+            if not (_external_script.get("title") or _external_script.get("youtube_title")):
+                _errs.append("title または youtube_title がない")
+            _sections = _external_script.get("sections")
+            if not isinstance(_sections, list) or not _sections:
+                _errs.append("sections が list でないか空")
+            else:
+                for _i, _sec in enumerate(_sections):
+                    _lines = _sec.get("lines") if isinstance(_sec, dict) else None
+                    if not isinstance(_lines, list) or not _lines:
+                        _errs.append(f"sections[{_i}].lines が list でないか空")
+                        break
+        if _errs:
+            print(f"エラー: 外部台本JSONのschema不備: {args.script_file}")
+            for _e in _errs:
+                print(f"  - {_e}")
+            sys.exit(1)
+        print(f"外部台本JSONを読み込みました: {args.script_file}")
 
     if not _resuming:
         if _external_script:
-            theme = _external_script.get("title", "外部台本")
+            # schema検証で title or youtube_title の存在は保証済み
+            theme = _external_script.get("title") or _external_script.get("youtube_title")
         elif args.theme:
             theme = args.theme
         elif args.auto:
@@ -198,26 +252,70 @@ def main():
     # ── フェーズ1+2: 台本生成 ─────────────────────────────
     if _phase_completed(manifest, "script_gen"):
         # 再開時: 完了済み台本の文字数を検証（不良台本での無駄走り防止）
-        _script_files = list(run_dir.glob("*.json"))
-        _script_path = next((f for f in _script_files if f.name.startswith("2026") and f.name.endswith(".json") and "metadata" not in f.name and "pipeline" not in f.name and "raw_" not in f.name and "preflight" not in f.name), None)
-        if _script_path:
+        # 2026-04-09事故対策:
+        #   - 旧実装は run_dir.glob("*.json") + startswith("2026") で台本を探していた
+        #     (無関係なJSONを掴む / 2027年以降動作しない問題あり)
+        #   - manifest script_gen.outputs を唯一の真実とする
+        # Codex Round3指摘: outputs欠損 or JSON破損を except: pass で握りつぶさず
+        # script_gen を failed 扱いにしてリジェネに回す (fail-closed)
+        _script_path = None
+        _script_invalid = False
+        _script_invalid_reason = ""
+        _sg_outputs = manifest.get("phases", {}).get("script_gen", {}).get("outputs", [])
+        if not _sg_outputs:
+            _script_invalid = True
+            _script_invalid_reason = "script_gen.outputs が manifest に無い"
+        else:
+            # Codex Round5: run_dir 相対 / run_dir.parent 相対 / 絶対を全て試す
+            for _out in _sg_outputs:
+                try:
+                    _out_p = Path(_out)
+                    if _out_p.is_absolute():
+                        _candidates = [_out_p]
+                    else:
+                        _candidates = [run_dir / _out_p, run_dir.parent / _out_p]
+                except Exception as _pe:
+                    _script_invalid = True
+                    _script_invalid_reason = f"outputs path 解釈失敗: {_pe}"
+                    break
+                _found = None
+                for _c in _candidates:
+                    if _c.exists() and _c.suffix == ".json":
+                        _found = _c
+                        break
+                if _found is not None:
+                    _script_path = _found
+                    break
+            if _script_path is None and not _script_invalid:
+                _script_invalid = True
+                _script_invalid_reason = f"outputs に実体のあるJSONなし: {_sg_outputs}"
+
+        _chars = None
+        if _script_path is not None:
             try:
                 import json as _j
                 _sc = _j.loads(_script_path.read_text(encoding="utf-8"))
                 _chars = sum(len(l.get("text","")) for s in _sc.get("sections",[]) for l in s.get("lines",[]))
-                if _chars < 3000:
-                    print(f"[再開モード] 台本が致命的に短い ({_chars}文字) → フェーズ1からやり直します")
-                    from skills._common import update_phase
-                    update_phase(run_dir, "script_gen", "failed", error=f"文字数不足: {_chars}文字")
-                    # 後続フェーズもリセット
-                    for _ph in ["metadata", "pronunciation", "se_assign", "prosody", "tts", "video_build", "thumbnail", "self_review", "upload"]:
-                        try:
-                            update_phase(run_dir, _ph, "pending")
-                        except Exception:
-                            pass
-                    manifest = json.loads((run_dir / "pipeline.json").read_text(encoding="utf-8"))
-            except Exception:
-                pass
+            except Exception as _je:
+                _script_invalid = True
+                _script_invalid_reason = f"台本JSON読込/パース失敗: {_je}"
+
+        # Codex Round5: 生成ループ側の閾値 _MIN_SCRIPT_CHARS と一致させる
+        # (旧 3000 は生成側 6000 と不整合で、resume時に 3000-5999 字台本が通っていた)
+        from skills.skill_script_gen import _MIN_SCRIPT_CHARS as _RESUME_MIN_CHARS
+        if _script_invalid or (_chars is not None and _chars < _RESUME_MIN_CHARS):
+            _reason = _script_invalid_reason if _script_invalid else f"文字数不足: {_chars}文字 (<{_RESUME_MIN_CHARS})"
+            print(f"[再開モード] 台本が無効 ({_reason}) → フェーズ1からやり直します")
+            from skills._common import update_phase
+            update_phase(run_dir, "script_gen", "failed", error=_reason)
+            # Codex Round5: self_review は PHASE_ORDER に無いので除外
+            for _ph in ["metadata", "pronunciation", "se_assign", "prosody", "tts", "video_build", "thumbnail", "upload"]:
+                try:
+                    update_phase(run_dir, _ph, "pending")
+                except Exception:
+                    pass
+            manifest = json.loads((run_dir / "pipeline.json").read_text(encoding="utf-8"))
+
         if _phase_completed(manifest, "script_gen"):
             print("【フェーズ1+2】台本生成 → スキップ（完了済み）")
     else:
@@ -270,6 +368,8 @@ def main():
     cleanup_result = run_cache_cleanup(run_dir=run_dir)
     if cleanup_result.get("stale_wav"):
         print(f"  [キャッシュ] 発音変更により {len(cleanup_result['stale_wav'])} WAVを削除しました")
+        # クリーンアップがphaseをpendingに戻した場合、manifestを再読み込み
+        manifest = json.loads((run_dir / "pipeline.json").read_text(encoding="utf-8"))
 
     # ── フェーズ4: 音声合成（自己修復付き）─────────────────
     if _phase_completed(manifest, "tts"):

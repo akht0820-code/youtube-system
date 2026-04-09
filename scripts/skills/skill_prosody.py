@@ -30,7 +30,7 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 PROSODY_ENABLED = os.getenv("PROSODY_ENABLED", "true").lower() == "true"
 
 # パラメータ安全範囲
-_SPEED_MIN, _SPEED_MAX = 0.90, 1.10
+_SPEED_MIN, _SPEED_MAX = 0.93, 1.10
 _PITCH_MIN, _PITCH_MAX = -2.0, 3.0
 _VOLUME_MIN, _VOLUME_MAX = -3.0, 4.0
 

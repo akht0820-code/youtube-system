@@ -1,11 +1,14 @@
 # YouTube自動アップロードモジュール
 
 import json
+import ssl
+import time
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
 from auth_utils import get_credentials
@@ -18,6 +21,77 @@ def _get_youtube_client():
     return build("youtube", "v3", credentials=get_credentials())
 
 
+# ── テスト動画判定（全レイヤー共通基準） ─────────────────────
+
+def is_test_video(title: str) -> bool:
+    """タイトルが[TEST]で始まる動画はテスト動画として扱う"""
+    return title.strip().upper().startswith("[TEST]")
+
+
+# ── 重複チェック（最低層の防御） ───────────────────────────
+
+def _check_duplicate_on_youtube(youtube) -> str | None:
+    """今日アップロード済みで公開予定の動画があるか確認する。
+
+    Returns:
+        重複動画のタイトル（あれば）。なければNone。
+        API失敗時もNone（安全側: アップロードを止めない）。
+    """
+    from datetime import timedelta
+    try:
+        jst = timezone(timedelta(hours=9))
+        today_jst = datetime.now(jst).strftime("%Y-%m-%d")
+
+        # 自分のチャンネルの最新動画を取得
+        resp = youtube.search().list(
+            part="snippet",
+            forMine=True,
+            type="video",
+            maxResults=5,
+            order="date",
+        ).execute()
+
+        for item in resp.get("items", []):
+            title = item["snippet"].get("title", "")
+            # テスト動画は重複カウントしない
+            if is_test_video(title):
+                continue
+
+            vid = item["id"]["videoId"]
+            # 詳細ステータスを取得
+            detail = youtube.videos().list(
+                part="status,contentDetails",
+                id=vid,
+            ).execute()
+            if not detail.get("items"):
+                continue
+            status = detail["items"][0]["status"]
+            privacy = status.get("privacyStatus", "")
+            publish_at_str = status.get("publishAt", "")
+
+            # 公開済み動画: 今日アップロードされたpublic動画
+            if privacy == "public":
+                pub_date = item["snippet"].get("publishedAt", "")[:10]
+                if pub_date == datetime.now(timezone.utc).strftime("%Y-%m-%d"):
+                    return title
+
+            # 予約投稿: private + publishAtが未来（今日の公開予定）
+            if privacy == "private" and publish_at_str:
+                try:
+                    pub_dt = datetime.fromisoformat(publish_at_str.replace("Z", "+00:00"))
+                    pub_jst = pub_dt.astimezone(jst).strftime("%Y-%m-%d")
+                    if pub_jst == today_jst and pub_dt > datetime.now(timezone.utc):
+                        return title
+                except Exception:
+                    pass
+
+            # 手動で非公開にした動画(publishAtなし)はスキップ = ブロックしない
+    except Exception:
+        pass  # API失敗時は安全側に倒す（アップロードを止めない）
+
+    return None
+
+
 # ── アップロード ──────────────────────────────────────────
 
 def upload_video(
@@ -27,6 +101,7 @@ def upload_video(
     tags: list[str],
     thumbnail_path: Path | None = None,
     publish_at: datetime | None = None,
+    privacy: str | None = None,
 ) -> str:
     """
     動画をYouTubeにアップロードする
@@ -47,8 +122,28 @@ def upload_video(
 
     youtube = _get_youtube_client()
 
-    # 予約投稿の場合はprivateで、指定時刻に自動公開
-    privacy_status = "private" if publish_at else "public"
+    # ── 最低層の重複防御: YouTube APIで今日の公開予定動画を確認 ──
+    # テスト動画のアップロード時は重複チェック自体をスキップ
+    if not is_test_video(title):
+        _dup_title = _check_duplicate_on_youtube(youtube)
+        if _dup_title:
+            raise RuntimeError(
+                f"[upload_video] 今日の公開予定動画が既に存在します: 「{_dup_title}」。"
+                f"重複アップロードを防止しました。"
+            )
+
+    # privacy を明示指定しない限り public にはしない（誤公開防止）
+    # - privacy 指定あり → そちらを優先
+    # - publish_at あり  → "private"（YouTube が指定時刻に自動公開）
+    # - どちらもなし     → "private"（意図しない即時公開を防ぐ）
+    # 即時公開したい場合は明示的に privacy="public" を渡すこと
+    if privacy:
+        privacy_status = privacy
+    elif publish_at:
+        privacy_status = "private"
+    else:
+        # デフォルトは非公開（意図しない即時公開を防ぐ）
+        privacy_status = "private"
 
     body = {
         "snippet": {
@@ -62,6 +157,9 @@ def upload_video(
         "status": {
             "privacyStatus": privacy_status,
             "selfDeclaredMadeForKids": False,
+            # YouTube 2025年ポリシー: AI生成コンテンツの開示義務
+            # AIで作成・加工した音声・映像を含む場合は True を設定する
+            "containsSyntheticMedia": True,
         },
     }
 
@@ -84,18 +182,41 @@ def upload_video(
     )
 
     request = youtube.videos().insert(
-        part="snippet,status",
+        part="snippet,status",   # status に containsSyntheticMedia を含む
         body=body,
         media_body=media,
     )
 
     print("YouTubeにアップロードしています...")
     response = None
+    retries = 0
+    _MAX_RETRIES = 5
     while response is None:
-        status, response = request.next_chunk()
-        if status:
-            pct = int(status.progress() * 100)
-            print(f"  アップロード中... {pct}%", end="\r")
+        try:
+            status, response = request.next_chunk()
+            if status:
+                pct = int(status.progress() * 100)
+                print(f"  アップロード中... {pct}%", end="\r")
+            retries = 0
+        except (ssl.SSLEOFError, ssl.SSLError, ConnectionResetError, TimeoutError) as e:
+            retries += 1
+            if retries > _MAX_RETRIES:
+                raise
+            wait = min(2 ** retries, 60)
+            print(f"\n  [ネットワーク一時エラー] {e.__class__.__name__}: {e}")
+            print(f"  {wait}秒後にチャンクを再試行します ({retries}/{_MAX_RETRIES})...")
+            time.sleep(wait)
+        except HttpError as e:
+            # 5xx は一時的サーバーエラーとしてリトライ
+            if e.resp.status in (500, 502, 503, 504):
+                retries += 1
+                if retries > _MAX_RETRIES:
+                    raise
+                wait = min(2 ** retries, 60)
+                print(f"\n  [サーバーエラー {e.resp.status}] {wait}秒後にリトライ ({retries}/{_MAX_RETRIES})...")
+                time.sleep(wait)
+            else:
+                raise
 
     video_id = response["id"]
     print(f"  アップロード完了！ 動画ID: {video_id}")
@@ -112,8 +233,48 @@ def upload_video(
     return video_id
 
 
+def delete_auto_captions(video_id: str) -> int:
+    """YouTubeの自動生成字幕を削除する。
+
+    焼き込み字幕と重複するため、自動生成字幕は不要。
+    アップロード直後は自動字幕がまだ生成されていないことがあるため、
+    run_monitor.py等から事後的に呼び出すことを想定。
+
+    Returns:
+        削除した字幕トラック数
+    """
+    youtube = _get_youtube_client()
+    try:
+        captions = youtube.captions().list(
+            part="snippet",
+            videoId=video_id,
+        ).execute()
+
+        deleted = 0
+        for item in captions.get("items", []):
+            track_kind = item["snippet"].get("trackKind", "")
+            # ASR = Automatic Speech Recognition（自動生成字幕）
+            if track_kind == "ASR":
+                caption_id = item["id"]
+                lang = item["snippet"].get("language", "")
+                youtube.captions().delete(id=caption_id).execute()
+                print(f"  自動字幕を削除しました: {lang} (ID: {caption_id})")
+                deleted += 1
+        return deleted
+    except Exception as e:
+        print(f"  [警告] 自動字幕削除失敗（処理続行）: {e}")
+        return 0
+
+
 def get_video_url(video_id: str) -> str:
     return f"https://youtu.be/{video_id}"
+
+
+def delete_video(video_id: str) -> None:
+    """YouTubeから動画を削除する"""
+    youtube = _get_youtube_client()
+    youtube.videos().delete(id=video_id).execute()
+    print(f"  動画を削除しました: {video_id}")
 
 
 # ── CLI ──────────────────────────────────────────────────

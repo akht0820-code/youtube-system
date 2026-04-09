@@ -280,33 +280,87 @@ def _build_diagnostic_summary(run_dir: Path | None) -> str:
 
 # ── 今日のパイプラインを探す ──────────────────────────────
 
-def find_today_run_dir() -> Path | None:
-    """今日作成された run_dir を探す（YYYYMMDD_ プレフィックス）"""
+def _list_today_run_dirs() -> list[tuple[Path, dict]]:
+    """今日作成された run_dir と manifest の一覧（名前降順）を返す。"""
     today_prefix = datetime.now().strftime("%Y%m%d")
-    candidates = []
+    items: list[tuple[Path, dict]] = []
     try:
         for d in OUTPUT_DIR.iterdir():
             if d.is_dir() and d.name.startswith(today_prefix):
                 pipeline = d / "pipeline.json"
                 if pipeline.exists():
-                    candidates.append(d)
+                    try:
+                        manifest = json.loads(pipeline.read_text(encoding="utf-8"))
+                    except Exception:
+                        manifest = {}
+                    items.append((d, manifest))
     except Exception:
         pass
+    items.sort(key=lambda t: t[0].name, reverse=True)
+    return items
 
-    if not candidates:
+
+def _is_upload_completed(manifest: dict) -> bool:
+    return manifest.get("phases", {}).get("upload", {}).get("status") == "completed"
+
+
+def _is_resumable(manifest: dict) -> bool:
+    """未完了(upload未完了)かつ completed 以外のrun。"""
+    phases = manifest.get("phases", {})
+    upload = phases.get("upload", {})
+    if upload.get("status") == "completed":
+        return False
+    # 少なくとも script_gen が存在しているrunなら再開対象とみなす
+    return "script_gen" in phases
+
+
+def find_today_run_dir(prefer: str = "auto") -> Path | None:
+    """今日作成された run_dir を探す（YYYYMMDD_ プレフィックス）。
+
+    status-aware 選択（2026-04-09事故対策: ただ最新を返すと壊れたrunを掴む）。
+
+    prefer:
+      - "upload_completed": upload.completed な最新のrunのみ返す（なければ None）
+      - "resumable": upload 未完了の最新のrunを返す（なければ None）
+      - "auto": upload_completed を優先、無ければ resumable、それも無ければ最新
+      - "latest": 旧挙動（名前の降順で先頭）
+    """
+    items = _list_today_run_dirs()
+    if not items:
         return None
 
-    # 最新のものを返す
-    candidates.sort(key=lambda d: d.name, reverse=True)
-    return candidates[0]
+    if prefer == "latest":
+        return items[0][0]
+
+    upload_done = [d for d, m in items if _is_upload_completed(m)]
+    resumable   = [d for d, m in items if _is_resumable(m)]
+
+    if prefer == "upload_completed":
+        return upload_done[0] if upload_done else None
+    if prefer == "resumable":
+        return resumable[0] if resumable else None
+
+    # auto
+    if upload_done:
+        return upload_done[0]
+    if resumable:
+        return resumable[0]
+    return items[0][0]
 
 
 def find_today_video_id() -> str | None:
-    """今日のパイプラインから video_id を取得する"""
-    run_dir = find_today_run_dir()
+    """今日のパイプラインから video_id を取得する。
+
+    サイレントフォールバック禁止（2026-04-09事故対策）:
+    以前は upload_completed が無ければ run.log 全体から最初の動画IDを
+    取る実装だったが、日付スコープがないため「昨日以前のアップ動画を
+    今日の対象として検証する」誤動作が起こり得た。
+    今日の manifest に upload_completed が無ければ None を返す。
+    """
+    # 複数runがあった場合、video_idはupload完了済みのrunからのみ取る
+    run_dir = find_today_run_dir(prefer="upload_completed")
     if not run_dir:
-        # pipeline.json がない場合: 従来のログから取得を試みる
-        return _find_video_id_from_log()
+        return None
     try:
         manifest = json.loads((run_dir / "pipeline.json").read_text(encoding="utf-8"))
         upload_phase = manifest.get("phases", {}).get("upload", {})
@@ -317,20 +371,6 @@ def find_today_video_id() -> str | None:
                 return out.split("youtu.be/")[-1]
         # outputs に video_id がなければ error も確認
         return None
-    except Exception:
-        return None
-
-
-def _find_video_id_from_log() -> str | None:
-    """run.log からアップロード済み video_id を探す（後方互換）"""
-    run_log = LOG_DIR / "run.log"
-    if not run_log.exists():
-        return None
-    try:
-        content = run_log.read_text(encoding="utf-8", errors="replace")
-        # "動画ID: XXXXXXXXXXX" パターンを探す
-        match = re.search(r"動画ID:\s*([A-Za-z0-9_-]{11})", content)
-        return match.group(1) if match else None
     except Exception:
         return None
 
@@ -517,7 +557,8 @@ def auto_fix(video_id: str, issue: dict) -> bool:
 
 def _fix_upload_thumbnail(video_id: str) -> bool:
     """サムネイルをアップロードする"""
-    run_dir = find_today_run_dir()
+    # アップロード済みrunからサムネイル画像を引く
+    run_dir = find_today_run_dir(prefer="upload_completed")
     if not run_dir:
         return False
 
@@ -602,7 +643,9 @@ def run_preflight() -> dict:
     }
 
     # ── Step 1: パイプライン存在確認 ─────────────────────────
-    run_dir = find_today_run_dir()
+    # status-aware: upload完了済み > 再開可能な未完了 > その他
+    # これにより「失敗した新規run + 成功済みrun」の共存時に成功runを検証できる
+    run_dir = find_today_run_dir(prefer="auto")
 
     if not run_dir:
         print("  [NG] 今日のパイプラインが見つかりません")
