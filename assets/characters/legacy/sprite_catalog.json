@@ -1,0 +1,442 @@
+{
+  "persona_marisa_arms_crossed.png": {
+    "character": "marisa",
+    "pose": "arms_crossed",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "arms crossed over chest, smug confident expression, slight knowing smile, looking at viewer",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, arms crossed over chest, smug confident expression, slight knowing smile, looking at viewer",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_tsukkomi_point.png": {
+    "character": "marisa",
+    "pose": "tsukkomi_point",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "one finger pointing forward accusingly, other hand on hip, exasperated expression, eyebrows raised, mouth open as if saying 'oi oi'",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, one finger pointing forward accusingly, other hand on hip, exasperated expression, eyebrows raised, mouth open as if saying 'oi oi'",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_facepalm.png": {
+    "character": "marisa",
+    "pose": "facepalm",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "one hand covering face in exasperation, other arm at side, clearly tired of the situation, sighing expression",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, one hand covering face in exasperation, other arm at side, clearly tired of the situation, sighing expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_head_shake.png": {
+    "character": "marisa",
+    "pose": "head_shake",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "shaking head slightly, hand raised in dismissal, disappointed but fond expression, closed eyes, slight frown",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, shaking head slightly, hand raised in dismissal, disappointed but fond expression, closed eyes, slight frown",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_one_eyebrow_raised.png": {
+    "character": "marisa",
+    "pose": "one_eyebrow_raised",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "arms crossed, one eyebrow raised skeptically, side-eye look, unimpressed smirk, looking sideways",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, arms crossed, one eyebrow raised skeptically, side-eye look, unimpressed smirk, looking sideways",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_explaining.png": {
+    "character": "marisa",
+    "pose": "explaining",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "index finger raised pointing up, other hand on hip, confident lecturing expression, slight proud smile",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, index finger raised pointing up, other hand on hip, confident lecturing expression, slight proud smile",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_lecture_serious.png": {
+    "character": "marisa",
+    "pose": "lecture_serious",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "both hands gesturing forward as if presenting facts, serious focused expression, leaning slightly forward",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, both hands gesturing forward as if presenting facts, serious focused expression, leaning slightly forward",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_proud_explain.png": {
+    "character": "marisa",
+    "pose": "proud_explain",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "arms open wide as if presenting something impressive, proud confident smile, chest out, looking at viewer",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, arms open wide as if presenting something impressive, proud confident smile, chest out, looking at viewer",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_thinking.png": {
+    "character": "marisa",
+    "pose": "thinking",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "hand on chin, thoughtful expression, eyes looking up slightly, calm analytical pose",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, hand on chin, thoughtful expression, eyes looking up slightly, calm analytical pose",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_surprised_good.png": {
+    "character": "marisa",
+    "pose": "surprised_good",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "eyes wide open in pleasant surprise, mouth open slightly, one hand raised, eyebrows up, genuinely impressed expression",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, eyes wide open in pleasant surprise, mouth open slightly, one hand raised, eyebrows up, genuinely impressed expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_smug_grin.png": {
+    "character": "marisa",
+    "pose": "smug_grin",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "arms crossed, wide smug grin, eyes narrowed confidently, self-satisfied expression, head tilted slightly",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, arms crossed, wide smug grin, eyes narrowed confidently, self-satisfied expression, head tilted slightly",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_excited_discovery.png": {
+    "character": "marisa",
+    "pose": "excited_discovery",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "leaning forward enthusiastically, both hands gesturing, bright excited eyes, open smile, sharing exciting information",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, leaning forward enthusiastically, both hands gesturing, bright excited eyes, open smile, sharing exciting information",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_stern.png": {
+    "character": "marisa",
+    "pose": "stern",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "arms at sides, stern serious face, direct eye contact, slightly furrowed brows, authoritative stance",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, arms at sides, stern serious face, direct eye contact, slightly furrowed brows, authoritative stance",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_disappointed.png": {
+    "character": "marisa",
+    "pose": "disappointed",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "arms crossed, disappointed frown, looking to the side, shaking head slightly, clearly unimpressed",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, arms crossed, disappointed frown, looking to the side, shaking head slightly, clearly unimpressed",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_disbelief.png": {
+    "character": "marisa",
+    "pose": "disbelief",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "hand on hip, other hand raised in disbelief, open mouth, wide eyes, looking shocked at something absurd",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, hand on hip, other hand raised in disbelief, open mouth, wide eyes, looking shocked at something absurd",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_tired_sigh.png": {
+    "character": "marisa",
+    "pose": "tired_sigh",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "one hand on hip, other rubbing temple, tired expression, eyes slightly closed, worn out but amused sigh",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, one hand on hip, other rubbing temple, tired expression, eyes slightly closed, worn out but amused sigh",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_gentle_smile.png": {
+    "character": "marisa",
+    "pose": "gentle_smile",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "arms relaxed at sides, warm gentle smile, soft eyes, kind approachable expression, looking at viewer warmly",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, arms relaxed at sides, warm gentle smile, soft eyes, kind approachable expression, looking at viewer warmly",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_concerned.png": {
+    "character": "marisa",
+    "pose": "concerned",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "leaning slightly forward, worried furrowed brows, one hand partially raised in concern, genuine worried look",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, leaning slightly forward, worried furrowed brows, one hand partially raised in concern, genuine worried look",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_impressed.png": {
+    "character": "marisa",
+    "pose": "impressed",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "arms crossed, nodding with impressed expression, raised eyebrows in approval, slight admiring smile",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, arms crossed, nodding with impressed expression, raised eyebrows in approval, slight admiring smile",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_wink.png": {
+    "character": "marisa",
+    "pose": "wink",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "one eye winking playfully, finger gun gesture or v-sign, confident playful grin, cocky but charming",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, one eye winking playfully, finger gun gesture or v-sign, confident playful grin, cocky but charming",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_angry_lecture.png": {
+    "character": "marisa",
+    "pose": "angry_lecture",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "hands on hips, clearly agitated, brows furrowed deeply, leaning forward with intensity, scolding expression",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, hands on hips, clearly agitated, brows furrowed deeply, leaning forward with intensity, scolding expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_marisa_relieved.png": {
+    "character": "marisa",
+    "pose": "relieved",
+    "base_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "hand on chest in relief, eyes slightly closed, relieved exhale expression, small smile",
+    "full_prompt": "anime girl, witch hat with white bow, black and white outfit, blonde hair in braid, red bow tie, golden eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, hand on chest in relief, eyes slightly closed, relieved exhale expression, small smile",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_surprised_hands.png": {
+    "character": "reimu",
+    "pose": "surprised_hands",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "both hands raised to mouth in surprise, wide eyes, shocked open mouth, eyebrows raised very high",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, both hands raised to mouth in surprise, wide eyes, shocked open mouth, eyebrows raised very high",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_shocked_dramatic.png": {
+    "character": "reimu",
+    "pose": "shocked_dramatic",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "hands on both cheeks, mouth wide open, eyes extremely wide, dramatically shocked expression, leaning back slightly",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, hands on both cheeks, mouth wide open, eyes extremely wide, dramatically shocked expression, leaning back slightly",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_jaw_drop.png": {
+    "character": "reimu",
+    "pose": "jaw_drop",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "mouth hanging open in disbelief, eyes wide, both hands slightly raised, completely stunned look",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, mouth hanging open in disbelief, eyes wide, both hands slightly raised, completely stunned look",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_gasping.png": {
+    "character": "reimu",
+    "pose": "gasping",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "one hand over mouth gasping, other hand in front, eyes wide with realization, 'I didn't know that!' expression",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, one hand over mouth gasping, other hand in front, eyes wide with realization, 'I didn't know that!' expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_confused.png": {
+    "character": "reimu",
+    "pose": "confused",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "head tilted to side, one finger on cheek, genuinely puzzled expression, big question mark energy",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, head tilted to side, one finger on cheek, genuinely puzzled expression, big question mark energy",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_thinking_hard.png": {
+    "character": "reimu",
+    "pose": "thinking_hard",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "both hands on cheeks, eyes squeezed thinking hard, working very hard to understand, cute confused look",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, both hands on cheeks, eyes squeezed thinking hard, working very hard to understand, cute confused look",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_clueless_smile.png": {
+    "character": "reimu",
+    "pose": "clueless_smile",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "innocent wide smile, eyes slightly squinted happily, clearly has no idea what's happening, cheerful ignorance",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, innocent wide smile, eyes slightly squinted happily, clearly has no idea what's happening, cheerful ignorance",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_wrong_idea.png": {
+    "character": "reimu",
+    "pose": "wrong_idea",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "confident pose with one finger raised, bright smile, completely wrong but certain expression, proudly mistaken",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, confident pose with one finger raised, bright smile, completely wrong but certain expression, proudly mistaken",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_happy.png": {
+    "character": "reimu",
+    "pose": "happy",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "arms slightly open, big happy smile, eyes curved upward, genuinely cheerful, pure joy expression",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, arms slightly open, big happy smile, eyes curved upward, genuinely cheerful, pure joy expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_excited_jump.png": {
+    "character": "reimu",
+    "pose": "excited_jump",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "both fists raised in excitement, big open smile, energetic bouncing energy, sparkling happy eyes",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, both fists raised in excitement, big open smile, energetic bouncing energy, sparkling happy eyes",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_delighted.png": {
+    "character": "reimu",
+    "pose": "delighted",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "hands clasped together in front of chest, bright smile, eyes sparkling, genuinely pleased and happy expression",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, hands clasped together in front of chest, bright smile, eyes sparkling, genuinely pleased and happy expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_embarrassed.png": {
+    "character": "reimu",
+    "pose": "embarrassed",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "hands on cheeks, rosy blush, embarrassed smile, looking slightly away, adorably flustered",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, hands on cheeks, rosy blush, embarrassed smile, looking slightly away, adorably flustered",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_crying_moved.png": {
+    "character": "reimu",
+    "pose": "crying_moved",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "tears in eyes, moved expression, hands clasped at chest, touched and emotional, happy crying",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, tears in eyes, moved expression, hands clasped at chest, touched and emotional, happy crying",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_scared.png": {
+    "character": "reimu",
+    "pose": "scared",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "arms held close to body, wide scared eyes, leaning back slightly, nervous frightened expression",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, arms held close to body, wide scared eyes, leaning back slightly, nervous frightened expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_realization.png": {
+    "character": "reimu",
+    "pose": "realization",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "sudden realization expression, one fist hitting palm, eyes lit up, open mouth in aha moment",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, sudden realization expression, one fist hitting palm, eyes lit up, open mouth in aha moment",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_nodding.png": {
+    "character": "reimu",
+    "pose": "nodding",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "nodding enthusiastically, agreeing expression, both hands raised slightly, 'I see!' expression",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, nodding enthusiastically, agreeing expression, both hands raised slightly, 'I see!' expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_worried.png": {
+    "character": "reimu",
+    "pose": "worried",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "hands clasped tightly, worried eyebrows, lips pressed together in concern, anxious look",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, hands clasped tightly, worried eyebrows, lips pressed together in concern, anxious look",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_pouting.png": {
+    "character": "reimu",
+    "pose": "pouting",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "cheeks puffed out slightly, small pout, arms crossed loosely, mildly annoyed but cute expression",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, cheeks puffed out slightly, small pout, arms crossed loosely, mildly annoyed but cute expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_sheepish_sorry.png": {
+    "character": "reimu",
+    "pose": "sheepish_sorry",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "hand on back of head sheepishly, nervous smile, looking slightly away, apologetic expression",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, hand on back of head sheepishly, nervous smile, looking slightly away, apologetic expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_determined.png": {
+    "character": "reimu",
+    "pose": "determined",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "fist raised in front, determined expression, motivated energetic look, 'I'll try it!' expression",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, fist raised in front, determined expression, motivated energetic look, 'I'll try it!' expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_relieved.png": {
+    "character": "reimu",
+    "pose": "relieved",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "hand on chest, eyes closed in relief, soft relieved smile, 'thank goodness' expression",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, hand on chest, eyes closed in relief, soft relieved smile, 'thank goodness' expression",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  },
+  "persona_reimu_curious_lean.png": {
+    "character": "reimu",
+    "pose": "curious_lean",
+    "base_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration",
+    "pose_prompt": "leaning forward slightly, curious bright eyes, one finger to lips, genuinely interested and attentive",
+    "full_prompt": "anime girl, red hair bow ribbon, red and white miko outfit, brown hair, red eyes, cute, touhou style, upper body, white background, high quality, detailed illustration, leaning forward slightly, curious bright eyes, one finger to lips, genuinely interested and attentive",
+    "model": "fal-ai/instant-character",
+    "scale": 1.2,
+    "guidance_scale": 5.0
+  }
+}

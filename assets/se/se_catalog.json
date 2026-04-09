@@ -1,0 +1,187 @@
+{
+  "surprised/don1": {
+    "file": "surprised/don1.mp3",
+    "category": "surprised",
+    "description": "ドーン"
+  },
+  "surprised/shock1": {
+    "file": "surprised/shock1.mp3",
+    "category": "surprised",
+    "description": "ショック1"
+  },
+  "surprised/surprise1": {
+    "file": "surprised/surprise1.mp3",
+    "category": "surprised",
+    "description": "驚く"
+  },
+  "surprised/jean1": {
+    "file": "surprised/jean1.mp3",
+    "category": "surprised",
+    "description": "ジャン！"
+  },
+  "surprised/jajean1": {
+    "file": "surprised/jajean1.mp3",
+    "category": "surprised",
+    "description": "ジャジャーン！"
+  },
+  "surprised/stunned1": {
+    "file": "surprised/stunned1.mp3",
+    "category": "surprised",
+    "description": "目が点になる"
+  },
+  "surprised/heart2": {
+    "file": "surprised/heart2.mp3",
+    "category": "surprised",
+    "description": "心臓ドキッ"
+  },
+  "funny/stupid1": {
+    "file": "funny/stupid1.mp3",
+    "category": "funny",
+    "description": "間抜け1"
+  },
+  "funny/stupid3": {
+    "file": "funny/stupid3.mp3",
+    "category": "funny",
+    "description": "間抜け3"
+  },
+  "funny/puyon1": {
+    "file": "funny/puyon1.mp3",
+    "category": "funny",
+    "description": "ぷよん"
+  },
+  "funny/tsukkomi1": {
+    "file": "funny/tsukkomi1.mp3",
+    "category": "funny",
+    "description": "ビシッとツッコミ"
+  },
+  "funny/chan-chan1": {
+    "file": "funny/chan-chan1.mp3",
+    "category": "funny",
+    "description": "ちゃんちゃん"
+  },
+  "funny/drop1": {
+    "file": "funny/drop1.mp3",
+    "category": "funny",
+    "description": "落ち込む"
+  },
+  "funny/pa1": {
+    "file": "funny/pa1.mp3",
+    "category": "funny",
+    "description": "可愛い表示パッ"
+  },
+  "funny/boyon1": {
+    "file": "funny/boyon1.mp3",
+    "category": "funny",
+    "description": "ボヨンと反発"
+  },
+  "serious/drum-japanese2": {
+    "file": "serious/drum-japanese2.mp3",
+    "category": "serious",
+    "description": "和太鼓でドドン"
+  },
+  "serious/heart1": {
+    "file": "serious/heart1.mp3",
+    "category": "serious",
+    "description": "心臓の鼓動(4拍)"
+  },
+  "positive/kira1": {
+    "file": "positive/kira1.mp3",
+    "category": "positive",
+    "description": "キラッ1"
+  },
+  "positive/correct1": {
+    "file": "positive/correct1.mp3",
+    "category": "positive",
+    "description": "クイズ正解"
+  },
+  "positive/levelup1": {
+    "file": "positive/levelup1.mp3",
+    "category": "positive",
+    "description": "レベルアップ"
+  },
+  "positive/flash1": {
+    "file": "positive/flash1.mp3",
+    "category": "positive",
+    "description": "ひらめく"
+  },
+  "positive/trumpet1": {
+    "file": "positive/trumpet1.mp3",
+    "category": "positive",
+    "description": "ファンファーレ"
+  },
+  "positive/hero1": {
+    "file": "positive/hero1.mp3",
+    "category": "positive",
+    "description": "ヒーローポーズ"
+  },
+  "positive/gauge-recovery1": {
+    "file": "positive/gauge-recovery1.mp3",
+    "category": "positive",
+    "description": "体力回復"
+  },
+  "positive/decision1": {
+    "file": "positive/decision1.mp3",
+    "category": "positive",
+    "description": "決定音"
+  },
+  "thinking/question1": {
+    "file": "thinking/question1.mp3",
+    "category": "thinking",
+    "description": "クイズ出題"
+  },
+  "thinking/incorrect1": {
+    "file": "thinking/incorrect1.mp3",
+    "category": "thinking",
+    "description": "クイズ不正解"
+  },
+  "thinking/correct2": {
+    "file": "thinking/correct2.mp3",
+    "category": "thinking",
+    "description": "鉄琴ピンポン"
+  },
+  "thinking/question2": {
+    "file": "thinking/question2.mp3",
+    "category": "thinking",
+    "description": "はてな？"
+  },
+  "transition/shakin1": {
+    "file": "transition/shakin1.mp3",
+    "category": "transition",
+    "description": "シャキーン1"
+  },
+  "transition/sceneswitch1": {
+    "file": "transition/sceneswitch1.mp3",
+    "category": "transition",
+    "description": "シーン切り替え"
+  },
+  "transition/title1": {
+    "file": "transition/title1.mp3",
+    "category": "transition",
+    "description": "タイトル表示"
+  },
+  "transition/flee1": {
+    "file": "transition/flee1.mp3",
+    "category": "transition",
+    "description": "シュッと素早い"
+  },
+  "emotional/teardrop1": {
+    "file": "emotional/teardrop1.mp3",
+    "category": "emotional",
+    "description": "涙がこぼれる"
+  },
+  "emotional/cute-sad1": {
+    "file": "emotional/cute-sad1.mp3",
+    "category": "emotional",
+    "description": "しょんぼり"
+  },
+  "emotional/gust1": {
+    "file": "emotional/gust1.mp3",
+    "category": "emotional",
+    "description": "冷たい風(ため息)"
+  },
+  "emotional/recollection1": {
+    "file": "emotional/recollection1.mp3",
+    "category": "emotional",
+    "description": "回想シャボン玉"
+  }
+}
