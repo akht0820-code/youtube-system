@@ -1,0 +1,13 @@
+# Windows バッチ/PS1 は CRLF を強制する。
+# 2026-04-10: WSL 編集後の LF 改行で run.bat が exit 255 即死した事故対応。
+# Windows cmd.exe は LF のみの batch を for/setlocal/ラベルで誤動作させる。
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+*.psm1  text eol=crlf
+
+# XML/タスクスケジューラ定義も CRLF
+*.xml   text eol=crlf
+
+# シェルスクリプトは LF
+*.sh    text eol=lf
