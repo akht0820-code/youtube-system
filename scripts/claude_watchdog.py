@@ -50,9 +50,10 @@ from __future__ import annotations
 import json
 import math
 import os
+import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -81,6 +82,21 @@ THRESH_BACKLOG = 600       # new/ 内のファイルが 600秒以上古いと ba
 THRESH_BG_DOWN = 600       # bg heartbeat が 600s 以上古い + cron fresh で bg_down
 THRESH_CRON_FRESH = 600    # cron が 600s 未満なら fresh (bg_down 判定の前提条件)
 ALERT_REPEAT_SEC = 1800    # 障害継続中の再通知間隔 (30分)
+
+# --- YukkuriDaily 10時タスク健全性チェック ---
+# シンプル設計: 10:30 〜 23:00 の間だけ「今日の LastRunTime が 10:00 以降で code==0」
+# かどうかを見る。それだけ。task_disabled / 267009 / hang 2h などの細かいロジックは
+# 撤廃。ハングは Task Scheduler 自身が ExecutionTimeLimit=PT4H で強制終了する。
+JST = timezone(timedelta(hours=9))
+DAILY_TASK_NAME = "YukkuriDaily"
+DAILY_START_HOUR = 10              # 10:00 JST 定時実行
+DAILY_GRACE_MINUTES = 30           # 10:30までスキップ（実行中・未到達）
+DAILY_CHECK_END_HOUR = 23          # 23:00以降スキップ（翌日分への巻き込み防止）
+POWERSHELL_TIMEOUT_SEC = 10
+_PS_CANDIDATES = (
+    Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"),
+    Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
+)
 
 # 原子的書き込みヘルパ
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -298,6 +314,184 @@ def _check_claude_dead() -> tuple[bool, dict]:
     }
 
 
+# --- YukkuriDaily 10時タスク健全性チェック ---
+#
+# シンプル設計: 10:30〜23:00 の間だけ、Task Scheduler の YukkuriDaily が
+# 「今日 10:00 以降に実行されて code==0 で終了したか」を見る。
+#
+# 検知できる失敗:
+#   - trigger が発火しなかった → LastRunTime が昨日以前 → "not_run_today"
+#   - run.bat/generator.py が非0終了 → "exit=N"
+#   - PowerShell 取得失敗 → "query_failed:..." → unknown (既存 alert 温存)
+#   - state=Running 中 → unknown (PT4H の ExecutionTimeLimit に任せる)
+#
+# テスト動画との非干渉: 監視対象は Task Scheduler の YukkuriDaily のみ。
+#   手動で run.bat / generator.py を叩いても Task Scheduler 状態は更新されないため、
+#   テスト動画アップロードは本チェックに一切影響しない。
+
+def _powershell_path() -> Path | None:
+    for cand in _PS_CANDIDATES:
+        try:
+            if cand.exists():
+                return cand
+        except OSError:
+            continue
+    return None
+
+
+def _query_daily_task() -> dict:
+    """Get-ScheduledTaskInfo / Get-ScheduledTask で YukkuriDaily の現在状態を取得。
+
+    戻り値 dict:
+        ok: bool
+        error: str (ok=False のとき)
+        last_run: datetime (tz-aware UTC) or None
+        last_result: int or None
+        state: str (例 "Ready", "Running", "Disabled")
+    """
+    ps = _powershell_path()
+    if ps is None:
+        return {"ok": False, "error": "powershell.exe not found"}
+
+    # PowerShell スクリプト: ISO8601 (UTC) で出力して locale 依存を回避
+    # Windows PowerShell 5.1 は redirected stdout を UTF-16LE で出力することが多いので
+    # [Console]::OutputEncoding を UTF-8 に強制 + Python 側でも BOM/NUL 検出して自動デコード
+    ps_script = (
+        "$ErrorActionPreference='Stop'; "
+        "try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {} "
+        "try { "
+        f"  $info = Get-ScheduledTaskInfo -TaskName '{DAILY_TASK_NAME}' -ErrorAction Stop; "
+        f"  $task = Get-ScheduledTask -TaskName '{DAILY_TASK_NAME}' -ErrorAction Stop; "
+        "  [pscustomobject]@{ "
+        "    LastRunTime = if ($info.LastRunTime) { $info.LastRunTime.ToUniversalTime().ToString('o') } else { $null }; "
+        "    LastTaskResult = $info.LastTaskResult; "
+        "    State = $task.State.ToString() "
+        "  } | ConvertTo-Json -Compress "
+        "} catch { Write-Error $_.Exception.Message; exit 2 }"
+    )
+
+    # Codex Round10 P1: bytes で受けてから BOM/NUL を見て自動デコード。
+    # text=True だと encoding 指定が固定されて UTF-16LE 出力時に NUL 混入 → json.loads 全滅。
+    kwargs: dict = {
+        "capture_output": True,
+        "timeout": POWERSHELL_TIMEOUT_SEC,
+    }
+    if os.name == "nt":
+        # CREATE_NO_WINDOW: pythonw.exe 下で subprocess が一瞬コンソール窓を開かない
+        kwargs["creationflags"] = 0x08000000
+
+    try:
+        proc = subprocess.run(
+            [str(ps), "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            **kwargs,
+        )
+    except FileNotFoundError as e:
+        return {"ok": False, "error": f"powershell spawn: {e}"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "powershell timeout"}
+    except Exception as e:
+        return {"ok": False, "error": f"powershell other: {e}"}
+
+    def _autodecode(buf: bytes) -> str:
+        """PowerShell stdout/stderr の bytes を自動判別してデコード。
+
+        優先順位:
+          1. UTF-16LE BOM (\\xff\\xfe) → UTF-16LE
+          2. UTF-16BE BOM (\\xfe\\xff) → UTF-16BE
+          3. UTF-8 BOM (\\xef\\xbb\\xbf) → UTF-8 (BOM除去)
+          4. 先頭20バイトに NUL あり → UTF-16LE (BOM なし PS 5.1 ケース)
+          5. それ以外 → UTF-8
+        """
+        if not buf:
+            return ""
+        if buf.startswith(b"\xff\xfe"):
+            return buf[2:].decode("utf-16-le", errors="replace")
+        if buf.startswith(b"\xfe\xff"):
+            return buf[2:].decode("utf-16-be", errors="replace")
+        if buf.startswith(b"\xef\xbb\xbf"):
+            return buf[3:].decode("utf-8", errors="replace")
+        if b"\x00" in buf[:20]:
+            return buf.decode("utf-16-le", errors="replace")
+        return buf.decode("utf-8", errors="replace")
+
+    if proc.returncode != 0:
+        err = _autodecode(proc.stderr or b"").strip().replace("\n", " ")[:200]
+        return {"ok": False, "error": f"powershell exit {proc.returncode}: {err}"}
+
+    raw = _autodecode(proc.stdout or b"").strip()
+    if not raw:
+        return {"ok": False, "error": "powershell empty output"}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        return {"ok": False, "error": f"json parse: {e}"}
+    if not isinstance(data, dict):
+        return {"ok": False, "error": f"unexpected json type: {type(data).__name__}"}
+
+    last_run = None
+    lr_str = data.get("LastRunTime")
+    if isinstance(lr_str, str) and lr_str:
+        try:
+            last_run = datetime.fromisoformat(lr_str.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return {"ok": False, "error": f"last_run parse: {lr_str[:60]}"}
+
+    return {
+        "ok": True,
+        "last_run": last_run,
+        "last_result": data.get("LastTaskResult"),
+        "state": str(data.get("State") or ""),
+    }
+
+
+def _check_daily_task_health() -> tuple[str, str]:
+    """10時タスクが今日正常実行されたかチェック（シンプル版）。
+
+    戻り値: (health, diagnosis)
+        healthy → 今日 10:00 以降に LastRunTime があり code==0
+        down    → 今日 10:00 以降に LastRunTime が無い or code!=0
+        unknown → 判定外（チェック時間帯外 / Running 中 / PowerShell 取得失敗）
+                  既存 alert state を一切触らない
+    """
+    now_jst = datetime.now(JST)
+    today_start = now_jst.replace(
+        hour=DAILY_START_HOUR, minute=0, second=0, microsecond=0
+    )
+    grace_end = today_start + timedelta(minutes=DAILY_GRACE_MINUTES)
+
+    # 10:30 前 / 23:00 以降 はチェックしない
+    if now_jst < grace_end or now_jst.hour >= DAILY_CHECK_END_HOUR:
+        return "unknown", "out_of_window"
+
+    info = _query_daily_task()
+    if not info.get("ok"):
+        err = info.get("error", "?")
+        _log(f"[WARN] daily task query failed: {err}")
+        return "unknown", f"query_failed:{err}"
+
+    state_lower = (info.get("state") or "").lower()
+    if state_lower == "running":
+        return "unknown", "running"
+
+    last_run = info.get("last_run")
+    if last_run is None:
+        return "down", "never_run"
+    last_run_jst = last_run.astimezone(JST)
+
+    if last_run_jst < today_start:
+        return "down", f"not_run_today last={last_run_jst.strftime('%Y-%m-%d %H:%M')}"
+
+    last_result = info.get("last_result")
+    try:
+        code = int(last_result) if last_result is not None else None
+    except (TypeError, ValueError):
+        code = None
+    if code != 0:
+        return "down", f"exit={code} last={last_run_jst.strftime('%H:%M')}"
+
+    return "healthy", f"ok last={last_run_jst.strftime('%H:%M')}"
+
+
 # --- inbox backlog ---
 
 def _scan_inbox_backlog() -> tuple[int, list[str]]:
@@ -469,6 +663,33 @@ def main() -> int:
             )
         _send_outbox_alert(msg)
         _log(f"claude_backlog notified: {reason} count={backlog}")
+
+    # --- YukkuriDaily 10時タスク健全性チェック ---
+    try:
+        health, daily_diag = _check_daily_task_health()
+    except Exception as e:
+        _log(f"[ERROR] _check_daily_task_health raised: {e}")
+        health, daily_diag = "unknown", f"exception:{e}"
+    _log(f"daily_task: health={health} {daily_diag}")
+
+    # down → 警告通知 / healthy → 復旧通知 / unknown → alert state 触らない
+    if health == "down":
+        should, reason, new_state = _should_notify("yukkuri_daily_task", True)
+        _save_alert_state("yukkuri_daily_task", new_state)
+        if should:
+            msg = (
+                f"[警告] 10時タスク YukkuriDaily に異常があります ({daily_diag})。"
+                f"Task Scheduler / run.bat / generator.py を確認してください。"
+            )
+            _send_outbox_alert(msg)
+            _log(f"yukkuri_daily_task notified: {reason} {daily_diag}")
+    elif health == "healthy":
+        should, reason, new_state = _should_notify("yukkuri_daily_task", False)
+        _save_alert_state("yukkuri_daily_task", new_state)
+        if should:
+            msg = "[復旧] 10時タスク YukkuriDaily が回復しました。"
+            _send_outbox_alert(msg)
+            _log(f"yukkuri_daily_task notified: {reason}")
 
     _log("=== check end ===")
     _end_run(run_id)
