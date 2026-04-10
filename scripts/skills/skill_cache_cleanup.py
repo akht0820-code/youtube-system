@@ -11,6 +11,7 @@ import re
 import shutil
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -24,10 +25,18 @@ OUTPUT_DIR = BASE_DIR / "output"
 LOG_DIR = BASE_DIR / "logs"
 SCRIPTS_DIR = BASE_DIR / "scripts"
 
-_WAV_KEEP_DAYS = 14       # WAVディレクトリ保持日数
-_FAILED_KEEP_DAYS = 7     # 失敗パイプライン保持日数
+_WAV_KEEP_DAYS = 14            # WAVディレクトリ保持日数
+_FAILED_KEEP_DAYS = 7          # 失敗パイプライン保持日数
+_ROOT_VIDEO_KEEP_DAYS = 7      # output/直下の古い動画/サムネ保持日数
 from skills._common import ALL_TEMP_GLOBS, TEMP_DIR_GLOBS
 _TEMP_PATTERNS = ALL_TEMP_GLOBS + ["*.tmp"]
+
+# output/直下の正規ファイル名（先頭が YYYYMMDD_HHMMSS_ または旧形式 YYYYMMDD_）
+# 現行: generator.py / skill_script_gen.py は YYYYMMDD_HHMMSS_ で出力。
+# 旧形式: 過去の手動運用ファイルは HHMMSS なしで残存している（Codex Round2 指摘）。
+# 旧形式の HHMMSS 補完は _parse_root_filename_timestamp() 内で行う（235959 = 保守側）。
+# パース不能なファイルは「正規パイプライン外」と判断して削除しない（安全側）。
+_ROOT_TIMESTAMP_RE = re.compile(r"^(\d{8})(?:_(\d{6}))?_")
 
 
 # ── ハッシュ計算 ──────────────────────────────────────────
@@ -106,6 +115,103 @@ def cleanup_old_wav_dirs(dry_run: bool = False) -> list[str]:
                         shutil.rmtree(d, ignore_errors=True)
     except Exception:
         pass
+    return deleted
+
+
+def _parse_root_filename_timestamp(name: str) -> float | None:
+    """ファイル名先頭の YYYYMMDD_HHMMSS（または旧 YYYYMMDD_）を UNIX 時刻に変換。
+
+    なぜ mtime ではなく filename ベースか:
+    - mtime はファイルコピー・手動再保存・サムネ差し替えで簡単に揺れる
+    - 一方ファイル名のタイムスタンプは生成時に固定され改変されない
+    - パース失敗 → None を返し、呼び出し側で削除対象から外す（安全側に倒す）
+
+    旧命名対応 (Codex Round2 指摘):
+    - HHMMSS が無いファイルは 235959 (= その日 23:59:59) として扱う
+    - 実際の生成時刻が不明な以上、一番遅い時刻を採用 = 「実時間で7日」を必ず満たす
+    - 000000 にすると最大24時間早く消えてしまうため Round3 で 235959 に変更
+    """
+    m = _ROOT_TIMESTAMP_RE.match(name)
+    if not m:
+        return None
+    date_part = m.group(1)
+    time_part = m.group(2) or "235959"
+    try:
+        dt = datetime.strptime(f"{date_part}_{time_part}", "%Y%m%d_%H%M%S")
+        return dt.timestamp()
+    except ValueError:
+        return None
+
+
+def cleanup_old_root_videos(dry_run: bool = False) -> list[str]:
+    """output/ 直下の古い MP4 / サムネ画像を削除する。
+
+    削除対象（_ROOT_VIDEO_KEEP_DAYS 日以上前）:
+    - *.mp4
+    - *_thumbnail.png（A/B/C などのバリアント含む）
+    - *_thumb_bg.jpg
+
+    削除しない（復元入力 / 監査証跡として保持）:
+    - *.json（resynth_and_build.py の必須入力。サイズも極小）
+    - *_bg.jpg（本編背景。resynth_and_build.py が再利用）
+    - その他の未認識ファイル（安全側）
+
+    判定基準（Codex 協議結果）:
+    - mtime ではなくファイル名先頭の YYYYMMDD_HHMMSS を使用
+    - パース不能なファイルは正規パイプライン外と見做して削除しない
+    """
+    cutoff = time.time() - _ROOT_VIDEO_KEEP_DAYS * 86400
+    deleted: list[str] = []
+    failures: list[str] = []
+    if not OUTPUT_DIR.exists():
+        return deleted
+
+    try:
+        entries = list(OUTPUT_DIR.iterdir())
+    except OSError as e:
+        # iterdir 自体の失敗は監視機能の死亡なのでログに出す
+        print(f"  [cleanup] OUTPUT_DIR.iterdir() 失敗: {e}")
+        return deleted
+
+    for p in entries:
+        if not p.is_file():
+            continue
+        name = p.name
+        # 削除対象サフィックス判定
+        is_target = (
+            name.endswith(".mp4")
+            or name.endswith("_thumb_bg.jpg")
+            or (name.endswith(".png") and "_thumbnail" in name)
+        )
+        if not is_target:
+            continue
+
+        ts = _parse_root_filename_timestamp(name)
+        if ts is None:
+            continue  # 命名規約外 → 安全側で残す
+        if ts >= cutoff:
+            continue  # まだ新しい
+
+        # Codex Round2 指摘: 削除失敗を成功として集計しない
+        # _safe_unlink は失敗時 False を返すので返り値で判定する
+        if dry_run:
+            deleted.append(str(p))
+        else:
+            if _safe_unlink(p):
+                deleted.append(str(p))
+            else:
+                # Codex Round3 指摘: _safe_unlink は generic Exception を無言で
+                # 握り潰すため、呼び出し側で失敗観測性を補強する
+                failures.append(name)
+                print(f"  [cleanup] root削除失敗: {name}")
+
+    # 失敗があれば集計を呼び出し側で見えるようにログに出す
+    if failures:
+        print(
+            f"  [cleanup] 古いroot動画/サムネ削除失敗: {len(failures)}件 "
+            f"({failures[:3]}...)"
+        )
+
     return deleted
 
 
@@ -208,6 +314,7 @@ def run_cache_cleanup(
     report = {
         "temp_files": [],
         "old_wav_dirs": [],
+        "old_root_videos": [],
         "failed_pipelines": [],
         "stale_wav": [],
     }
@@ -229,6 +336,11 @@ def run_cache_cleanup(
         report["old_wav_dirs"] = old
         if old:
             logger.log(f"{mode}古いWAVディレクトリ {len(old)} 件削除")
+
+        old_root = cleanup_old_root_videos(dry_run)
+        report["old_root_videos"] = old_root
+        if old_root:
+            logger.log(f"{mode}古いroot動画/サムネ {len(old_root)} 件削除")
 
         failed = cleanup_failed_pipelines(dry_run)
         report["failed_pipelines"] = failed
