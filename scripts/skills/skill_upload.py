@@ -95,21 +95,39 @@ def run_upload(
     update_phase(run_dir, "upload", "in_progress")
 
     try:
-        # ── Step 2-ε: channel config から lock_path を解決 (fail-closed) ──
-        # --no-upload 経路でも config 破損時は RuntimeError で落ちる (Codex Medium advisory 合意済み).
-        # 注: 外側 try の中に置くことで, config 読込失敗時も update_phase("failed") +
-        # notify_error が発動する (Codex P2 指摘 2026-04-11 対応).
+        # ── Step 3-δ.2: manifest から channel_id を取得し channel config を解決 ──
+        # - key 不在 (Step 3-δ.1 以前の旧 run) のみ 'health' へフォールバック
+        # - None / 空文字 / 非 str 等の不正値は fail-closed (RuntimeError)
+        # - 未知の channel_id ('creatures' typo 等) は load_channel() の schema 検証で fail-closed
+        #
+        # snapshot divergence 防止 (Codex adversarial 2026-04-11 指摘):
+        # 本先行 load は channel_id 取得のみに使い, outputs 読みには使わない.
+        # outputs 用 manifest は check_prerequisites 後に再読込する (旧実装と同じ
+        # "前提チェック後に fresh snapshot" semantics を維持).
+        _m_for_channel = load_manifest(run_dir)
+        if "channel_id" not in _m_for_channel:
+            _channel_id = "health"  # 旧 run 互換
+        else:
+            _channel_id = _m_for_channel["channel_id"]
+            if not isinstance(_channel_id, str) or not _channel_id:
+                raise RuntimeError(
+                    f"manifest.channel_id 不正 (upload): {_channel_id!r}"
+                )
+        del _m_for_channel  # snapshot divergence 防止: outputs 用に流用しない
         try:
             from _channel import load_channel, ChannelLoadError
-            _cfg = load_channel('health')
+            _cfg = load_channel(_channel_id)
         except (ImportError, ChannelLoadError) as _ce:
-            raise RuntimeError(f"チャンネル設定読込失敗 (upload): {_ce}") from _ce
+            raise RuntimeError(
+                f"チャンネル設定読込失敗 (upload, channel={_channel_id}): {_ce}"
+            ) from _ce
         _lock_path = Path(__file__).parent.parent.parent / _cfg.paths.lock_file
 
         # 前提チェック: video_build と thumbnail が完了していること
         if not check_prerequisites(run_dir, "upload", ["video_build", "thumbnail"]):
             raise RuntimeError("前提フェーズ 'video_build' または 'thumbnail' が未完了です")
 
+        # outputs 読み用 manifest (前提チェック後に fresh snapshot で再読込, 旧 L113 相当)
         manifest = load_manifest(run_dir)
 
         # 動画パスの取得（video_build フェーズの出力から）
