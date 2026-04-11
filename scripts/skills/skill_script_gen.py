@@ -33,7 +33,11 @@ from analyzer import load_suggestions
 from notifier import notify_error
 from script_repair import extract_json_safe, repair_structure, repair_script, validate_script
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "output"
+# Step 3-δ.5c-1: OUTPUT_DIR module-level 定数は削除.
+# - save_script は run_script_gen() から output_dir を受け取る
+# - _pick_theme_from_file (CLI main 専用) は themes_path / output_dir を引数で受け取る
+# - invariant: run_dir.parent == output_dir (generator._create_run_dir で保証).
+#   本 Step は invariant 維持のみ. 相対 outputs 解決モデルは横断設計 (別 Step).
 
 # フォールバック用デフォルト構成
 _FALLBACK_STRUCTURE = {
@@ -744,39 +748,46 @@ def generate_script(theme: str, structure: dict,
     return script, raw_sections
 
 
-def save_script(theme: str, script: dict) -> Path:
-    """台本をJSONファイルとして保存"""
-    OUTPUT_DIR.mkdir(exist_ok=True)
+def save_script(theme: str, script: dict, output_dir: Path) -> Path:
+    """台本をJSONファイルとして保存.
+
+    Step 3-δ.5c-1: output_dir を引数で受け取る (旧 module-level OUTPUT_DIR 廃止).
+    Codex 設計レビュー: channel schema は paths.output_subdir に 'foo/bar' のような
+    相対サブパスも許容するため, parents=True で mkdir する.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     # ファイル名に使えない文字を除去
     safe_theme = re.sub(r'[\\/:*?"<>|]', "", theme)[:30]
     filename = f"{timestamp}_{safe_theme}.json"
 
-    output_path = OUTPUT_DIR / filename
+    output_path = output_dir / filename
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(script, f, ensure_ascii=False, indent=2)
 
     return output_path
 
 
-def _pick_theme_from_file() -> str:
-    """themes.txt からランダムにテーマを1つ選ぶ（output/ で使用済みのテーマは除外）"""
-    themes_path = Path(__file__).parent.parent.parent / "themes.txt"
+def _pick_theme_from_file(themes_path: Path, output_dir: Path) -> str:
+    """themes.txt からランダムにテーマを1つ選ぶ（output_dir で使用済みのテーマは除外）.
+
+    Step 3-δ.5c-1: themes_path / output_dir を引数で受け取る (CLI main 専用).
+    """
     if not themes_path.exists():
-        raise FileNotFoundError("themes.txt が見つかりません")
+        raise FileNotFoundError(f"themes.txt が見つかりません: {themes_path}")
     lines = [l.strip() for l in themes_path.read_text(encoding="utf-8").splitlines() if l.strip()]
     if not lines:
         raise ValueError("themes.txt にテーマが入っていません")
 
-    # output/ のサブディレクトリ名から使用済み safe_theme を取得
+    # output_dir のサブディレクトリ名から使用済み safe_theme を取得
     used: set[str] = set()
     try:
-        for d in OUTPUT_DIR.iterdir():
+        for d in output_dir.iterdir():
             if d.is_dir() and re.match(r"\d{8}_\d{6}_", d.name):
                 used.add(d.name[16:])
     except Exception:
-        pass  # OUTPUT_DIR が読めなくてもテーマ選択は続行
+        pass  # output_dir が読めなくてもテーマ選択は続行
 
     # safe_theme 変換して比較
     unused = [t for t in lines if re.sub(r'[\\/:*?"<>|]', "", t)[:30] not in used]
@@ -801,6 +812,9 @@ def run_script_gen(run_dir: str | Path, theme: str, external_script: dict | None
         {"youtube_title": str, "structure": dict, "script": dict, "script_path": Path}
     """
     run_dir = Path(run_dir)
+    # Step 3-δ.5c-1: invariant `run_dir.parent == output_dir` を本 Step でも維持.
+    # generator._create_run_dir() が `output_dir / "{ts}_{theme}"` で作るので成立.
+    output_dir = run_dir.parent
     logger = SkillLogger(run_dir, "script_gen")
     update_phase(run_dir, "script_gen", "in_progress")
 
@@ -931,7 +945,7 @@ def run_script_gen(run_dir: str | Path, theme: str, external_script: dict | None
         # ── 台本を保存 ───────────────────────────────────
         script["youtube_title"] = youtube_title
         try:
-            output_path = save_script(theme, script)
+            output_path = save_script(theme, script, output_dir)
             logger.log(f"台本を保存しました: {output_path}")
         except Exception as e:
             notify_error("台本保存", e)
@@ -966,7 +980,39 @@ def main():
     parser.add_argument("--run-dir", required=True, help="パイプラインの実行ディレクトリ")
     parser.add_argument("--theme", default="", help="テーマを直接指定（未指定時は themes.txt からランダム選択）")
     parser.add_argument("--script-file", default="", help="外部台本JSONファイルのパス")
+    parser.add_argument("--channel", default="health", choices=["health"],
+                        help="チャンネルID (creatures は Step 3-δ.5c-7 で開放)")
     args = parser.parse_args()
+
+    # Step 3-δ.5c-1: channel config 読込 (fail-closed, generator.py と同形の二段 try).
+    # ensure_scripts_path は module-level (L20) で既に呼ばれているため再呼び出し不要.
+    try:
+        from _channel import load_channel, ChannelLoadError
+    except Exception as _ce_imp:
+        print(f"エラー: _channel モジュール import 失敗: {_ce_imp}")
+        _sys.exit(1)
+    try:
+        channel = load_channel(args.channel)
+    except ChannelLoadError as _ce_load:
+        print(f"エラー: channel config 読込失敗 ({args.channel}): {_ce_load}")
+        _sys.exit(1)
+
+    _project_root = Path(__file__).parent.parent.parent
+    _themes_path = _project_root / channel.paths.themes_file
+    _output_dir = _project_root / channel.paths.output_subdir
+
+    # Step 3-δ.5c-1: invariant guard (Codex 対立レビュー指摘).
+    # CLI 経路では --run-dir の親が channel の _output_dir と一致することを
+    # fail-closed で強制する. これが無いと save_script (run_dir.parent 基準)
+    # とテーマ選択 (_output_dir 基準) が別ディレクトリを見る silent bug に
+    # なりうる. resolve() で絶対パス化して比較.
+    _run_dir_resolved = Path(args.run_dir).resolve()
+    _output_dir_resolved = _output_dir.resolve()
+    if _run_dir_resolved.parent != _output_dir_resolved:
+        print(f"エラー: --run-dir の親 ({_run_dir_resolved.parent}) が")
+        print(f"       channel '{args.channel}' の output_dir ({_output_dir_resolved}) と一致しません")
+        print(f"       --run-dir は output_dir 直下の run ディレクトリを指定してください")
+        _sys.exit(1)
 
     # --theme と --script-file の併用禁止（theme/script不整合 silent bug防止）
     if args.theme and args.script_file:
@@ -1026,7 +1072,7 @@ def main():
         theme = external_script.get("title") or external_script.get("youtube_title") or "外部台本"
         print(f"テーマは外部台本から取得: 「{theme}」")
     else:
-        theme = _pick_theme_from_file()
+        theme = _pick_theme_from_file(_themes_path, _output_dir)
         print(f"テーマを自動選択しました: 「{theme}」")
 
     result = run_script_gen(args.run_dir, theme, external_script)
