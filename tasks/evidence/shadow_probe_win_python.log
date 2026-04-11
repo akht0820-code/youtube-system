@@ -1,0 +1,106 @@
+'\\wsl.localhost\Ubuntu\tmp'
+��L�̌��݂̃f�B���N�g���� CMD.EXE ���J�n���܂����B
+UNC �p�X�̓T�|�[�g����܂���BWindows �f�B���N�g��������Ŏg�p���܂��B
+======================================================================
+Shadow Probe v2 - 2-module load sequence (Codex v3 H3 response)
+======================================================================
+
+python executable : C:\Users\user\AppData\Local\Programs\Python\Python311\python.exe
+python version    : 3.11.9
+cwd               : C:\Users\user\AppData\Local\Temp
+sys.path[0]       : 'C:\\Users\\user\\AppData\\Local\\Temp'
+scripts/secrets.py exists: True
+fake_scripts dir  : C:\Users\user\AppData\Local\Temp\shadow_probe_fake_q164wb83
+[PASS] scripts/secrets.py 実在確認: C:\Users\user\Desktop\youtube-system\scripts\secrets.py
+[PASS] sys.path に scripts/ が入っていない (pre-condition): scripts_in_sys_path=False
+[PASS] stdlib secrets.token_hex が呼べる: __file__='C:\\Users\\user\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\secrets.py'
+[PASS] import secrets が stdlib を指している: __file__='C:\\Users\\user\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\secrets.py'
+[PASS] _channel_schema 相当 load 成功: PROBE_SECRETS_FILE='C:\\Users\\user\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\secrets.py'
+[PASS] _channel_schema 内の import secrets が stdlib を指している: 'C:\\Users\\user\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\secrets.py'
+[PASS] _channel 相当 load 成功 (from _channel_schema import が解決): PROBE_SECRETS_FILE_IN_CHANNEL='C:\\Users\\user\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\secrets.py'
+[PASS] _channel 内の import secrets が stdlib を指している: 'C:\\Users\\user\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\secrets.py'
+[PASS] load_channel('health') 成功 (validate_and_build で token_hex 呼べた): cfg=ChannelConfig(id='health')
+[PASS] 2 モジュール load 後も sys.path に scripts/ が入っていない: scripts_in_sys_path_post=False
+[PASS] 2 モジュール load 後も stdlib secrets.token_hex が呼べる: __file__='C:\\Users\\user\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\secrets.py', token='8c4f8396'
+[PASS] sys.modules cleanup 可能: _channel / _channel_schema を sys.modules から削除成功
+
+--- Negative case: sys.path[0] = scripts/ ---
+[PASS] sys.path[0]=scripts/ 下では shadow が実際に発生する (negative): __file__='C:\\Users\\user\\Desktop\\youtube-system\\scripts\\secrets.py'
+
+======================================================================
+SUMMARY
+======================================================================
+  [PASS] scripts/secrets.py 実在確認
+  [PASS] sys.path に scripts/ が入っていない (pre-condition)
+  [PASS] stdlib secrets.token_hex が呼べる
+  [PASS] import secrets が stdlib を指している
+  [PASS] _channel_schema 相当 load 成功
+  [PASS] _channel_schema 内の import secrets が stdlib を指している
+  [PASS] _channel 相当 load 成功 (from _channel_schema import が解決)
+  [PASS] _channel 内の import secrets が stdlib を指している
+  [PASS] load_channel('health') 成功 (validate_and_build で token_hex 呼べた)
+  [PASS] 2 モジュール load 後も sys.path に scripts/ が入っていない
+  [PASS] 2 モジュール load 後も stdlib secrets.token_hex が呼べる
+  [PASS] sys.modules cleanup 可能
+  [PASS] sys.path[0]=scripts/ 下では shadow が実際に発生する (negative)
+
+13 / 13 passed
+
+結論 (v2 probe):
+  - 実設計の 2 モジュール load sequence (_channel_schema sys.modules 先行注入 + _channel load)
+    でも sys.path に scripts/ は混入せず、stdlib secrets は shadow されない
+  - load_channel() 内部の validate_and_build で token_hex が呼べる
+  - sys.modules の cleanup も実行可能
+  - ネガティブケース (sys.path[0]=scripts/) では shadow が実際に発生
+---WSL python3 3.12.3---
+======================================================================
+Shadow Probe v2 - 2-module load sequence (Codex v3 H3 response)
+======================================================================
+
+python executable : /usr/bin/python3
+python version    : 3.12.3
+cwd               : /tmp
+sys.path[0]       : '/tmp'
+scripts/secrets.py exists: True
+fake_scripts dir  : /tmp/shadow_probe_fake_tqudd35n
+[PASS] scripts/secrets.py 実在確認: /mnt/c/Users/user/Desktop/youtube-system/scripts/secrets.py
+[PASS] sys.path に scripts/ が入っていない (pre-condition): scripts_in_sys_path=False
+[PASS] stdlib secrets.token_hex が呼べる: __file__='/usr/lib/python3.12/secrets.py'
+[PASS] import secrets が stdlib を指している: __file__='/usr/lib/python3.12/secrets.py'
+[PASS] _channel_schema 相当 load 成功: PROBE_SECRETS_FILE='/usr/lib/python3.12/secrets.py'
+[PASS] _channel_schema 内の import secrets が stdlib を指している: '/usr/lib/python3.12/secrets.py'
+[PASS] _channel 相当 load 成功 (from _channel_schema import が解決): PROBE_SECRETS_FILE_IN_CHANNEL='/usr/lib/python3.12/secrets.py'
+[PASS] _channel 内の import secrets が stdlib を指している: '/usr/lib/python3.12/secrets.py'
+[PASS] load_channel('health') 成功 (validate_and_build で token_hex 呼べた): cfg=ChannelConfig(id='health')
+[PASS] 2 モジュール load 後も sys.path に scripts/ が入っていない: scripts_in_sys_path_post=False
+[PASS] 2 モジュール load 後も stdlib secrets.token_hex が呼べる: __file__='/usr/lib/python3.12/secrets.py', token='f726201a'
+[PASS] sys.modules cleanup 可能: _channel / _channel_schema を sys.modules から削除成功
+
+--- Negative case: sys.path[0] = scripts/ ---
+[PASS] sys.path[0]=scripts/ 下で shadow 発生 (scripts/secrets.py 経由の ModuleNotFoundError が証拠): ModuleNotFoundError: No module named 'dotenv'
+
+======================================================================
+SUMMARY
+======================================================================
+  [PASS] scripts/secrets.py 実在確認
+  [PASS] sys.path に scripts/ が入っていない (pre-condition)
+  [PASS] stdlib secrets.token_hex が呼べる
+  [PASS] import secrets が stdlib を指している
+  [PASS] _channel_schema 相当 load 成功
+  [PASS] _channel_schema 内の import secrets が stdlib を指している
+  [PASS] _channel 相当 load 成功 (from _channel_schema import が解決)
+  [PASS] _channel 内の import secrets が stdlib を指している
+  [PASS] load_channel('health') 成功 (validate_and_build で token_hex 呼べた)
+  [PASS] 2 モジュール load 後も sys.path に scripts/ が入っていない
+  [PASS] 2 モジュール load 後も stdlib secrets.token_hex が呼べる
+  [PASS] sys.modules cleanup 可能
+  [PASS] sys.path[0]=scripts/ 下で shadow 発生 (scripts/secrets.py 経由の ModuleNotFoundError が証拠)
+
+13 / 13 passed
+
+結論 (v2 probe):
+  - 実設計の 2 モジュール load sequence (_channel_schema sys.modules 先行注入 + _channel load)
+    でも sys.path に scripts/ は混入せず、stdlib secrets は shadow されない
+  - load_channel() 内部の validate_and_build で token_hex が呼べる
+  - sys.modules の cleanup も実行可能
+  - ネガティブケース (sys.path[0]=scripts/) では shadow が実際に発生

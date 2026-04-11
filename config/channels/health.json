@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "health",
+  "paths": {
+    "output_subdir": "output",
+    "themes_file": "themes.txt",
+    "lock_file": "logs/last_upload_date.txt"
+  },
+  "oauth": {
+    "credentials": "credentials.json",
+    "token": "token.json"
+  },
+  "script": {
+    "min_chars": 6000,
+    "max_chars": 7500
+  },
+  "tags": {
+    "default": ["ゆっくり解説", "健康"]
+  }
+}

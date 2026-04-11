@@ -1,0 +1,42 @@
+test_T10_bad_channel_ids (__main__.TestChannelIdValidation.test_T10_bad_channel_ids) ... ok
+test_T10b_non_string_channel_id (__main__.TestChannelIdValidation.test_T10b_non_string_channel_id) ... ok
+test_T01_returns_channel_config (__main__.TestHealthLoad.test_T01_returns_channel_config) ... ok
+test_T02_schema_version (__main__.TestHealthLoad.test_T02_schema_version) ... ok
+test_T03_id (__main__.TestHealthLoad.test_T03_id) ... ok
+test_T04_paths (__main__.TestHealthLoad.test_T04_paths) ... ok
+test_T05_oauth (__main__.TestHealthLoad.test_T05_oauth) ... ok
+test_T06_script (__main__.TestHealthLoad.test_T06_script) ... ok
+test_T07_tags (__main__.TestHealthLoad.test_T07_tags) ... ok
+test_T08_frozen_dataclass (__main__.TestHealthLoad.test_T08_frozen_dataclass) ... ok
+test_T09_tags_default_is_tuple (__main__.TestHealthLoad.test_T09_tags_default_is_tuple) ... ok
+test_file_missing (__main__.TestLoadChannelErrorPaths.test_file_missing) ... ok
+test_id_mismatch_file_stem (__main__.TestLoadChannelErrorPaths.test_id_mismatch_file_stem) ... ok
+test_malformed_json (__main__.TestLoadChannelErrorPaths.test_malformed_json) ... ok
+test_top_level_non_dict (__main__.TestLoadChannelErrorPaths.test_top_level_non_dict) ... ok
+test_top_level_string (__main__.TestLoadChannelErrorPaths.test_top_level_string) ... ok
+test_utf8_bom_accepted (__main__.TestLoadChannelErrorPaths.test_utf8_bom_accepted) ... ok
+test_T12_path_like_matrix_rejects_all (__main__.TestPathLikeTraversalMatrix.test_T12_path_like_matrix_rejects_all) ... ok
+test_T12b_path_like_rejects_empty (__main__.TestPathLikeTraversalMatrix.test_T12b_path_like_rejects_empty) ... ok
+test_T12c_path_like_rejects_non_string (__main__.TestPathLikeTraversalMatrix.test_T12c_path_like_rejects_non_string) ... ok
+test_scripts_not_in_sys_path (__main__.TestShadowMetaCheck.test_scripts_not_in_sys_path) ... ok
+test_secrets_not_from_scripts (__main__.TestShadowMetaCheck.test_secrets_not_from_scripts) ... ok
+test_stdlib_secrets_usable (__main__.TestShadowMetaCheck.test_stdlib_secrets_usable) ... ok
+test_T11_unknown_top_level_key (__main__.TestStrictSchema.test_T11_unknown_top_level_key) ... ok
+test_T11b_unknown_nested_key (__main__.TestStrictSchema.test_T11b_unknown_nested_key) ... ok
+test_T13_schema_version_must_be_1 (__main__.TestStrictSchema.test_T13_schema_version_must_be_1) ... ok
+test_T13b_schema_version_must_be_int (__main__.TestStrictSchema.test_T13b_schema_version_must_be_int) ... ok
+test_T14_id_must_match_file_stem (__main__.TestStrictSchema.test_T14_id_must_match_file_stem) ... ok
+test_T15_min_chars_must_be_le_max (__main__.TestStrictSchema.test_T15_min_chars_must_be_le_max) ... ok
+test_T15b_min_chars_positive (__main__.TestStrictSchema.test_T15b_min_chars_positive) ... ok
+test_T15c_max_chars_positive (__main__.TestStrictSchema.test_T15c_max_chars_positive) ... ok
+test_T15d_script_fields_reject_bool (__main__.TestStrictSchema.test_T15d_script_fields_reject_bool) ... ok
+test_T16_missing_required_keys (__main__.TestStrictSchema.test_T16_missing_required_keys) ... ok
+test_T16b_missing_nested_keys (__main__.TestStrictSchema.test_T16b_missing_nested_keys) ... ok
+test_T16c_tags_default_empty_rejected (__main__.TestStrictSchema.test_T16c_tags_default_empty_rejected) ... ok
+test_T16d_tags_default_non_string_element (__main__.TestStrictSchema.test_T16d_tags_default_non_string_element) ... ok
+test_T16e_tags_default_empty_string_element (__main__.TestStrictSchema.test_T16e_tags_default_empty_string_element) ... ok
+
+----------------------------------------------------------------------
+Ran 37 tests in 0.118s
+
+OK

@@ -1,0 +1,399 @@
+================================================================
+生物チャンネル分岐設計 フェーズ1 設計提案
+2026-04-10  実装未着手・ユーザー承認待ち
+================================================================
+
+【全体結論】
+パターン3「共通基盤+チャンネル別設定」を推奨
+
+理由
+- 健康チャンネルの既存コードはほぼ無改修で済む
+- video_builder.py (2500行) を共通流用できる
+- 3本目の追加も設定ファイルだけで済む
+- 現行システムに既に抽象化下地あり
+  (model_config / image_provider / secrets.py)
+
+健康側の安定稼働を最優先
+生物側はアディティブ追加のみ
+
+
+================================================================
+1. 現状調査: ハードコード12箇所
+================================================================
+
+■ 大きな書き換えが必要
+- scripts/prompts.py (1093行 全部健康特化)
+- themes.txt (健康テーマのみ)
+- scripts/auth_utils.py
+  credentials.json / token.json が PROJECT_ROOT 固定
+  = 1 YouTube チャンネルしか認証できない (最大の変更点)
+- scripts/skills/skill_upload.py
+  lock_path 固定、デフォルトタグに「健康」
+- scripts/generator.py
+  OUTPUT_DIR / themes.txt / lock file 全て固定
+
+■ 中程度の改修
+- scripts/characters.py (霊夢/魔理沙の役割固定)
+- scripts/skills/skill_metadata.py
+  フォールバック説明文・医療開示文がハードコード
+- scripts/thumbnail_director.py
+  _THEMES = 健康カテゴリ、キャラクター配置固定
+- scripts/image_generator.py
+  _build_image_prompt() が健康生活シーン前提
+- scripts/preflight_check.py (単一 run_dir 前提)
+- run.bat (cd scripts → generator.py 固定)
+- task_yukkuri_daily_*.xml (URI YukkuriDaily 固定)
+
+
+================================================================
+2. 環境制約の確認結果
+================================================================
+
+■ メモリ: WSL2 割当 5.7GB (使用 1.1GB / 空き 4.5GB)
+  video_build が 2〜3GB 使う
+  → 2本並列は OOM 確定
+  → 直列必須
+
+■ ディスク: C: 238GB中 123GB空き + 7日自動削除
+  → 問題なし
+
+■ Gemini API: 2.5 Pro 無料枠内
+  → 2本/日なら余裕、時差起動推奨
+
+■ YouTube OAuth: credentials.json + token.json 1組
+  → 最大の構造変更点、別 token 必須
+
+■ Task Scheduler: YukkuriDaily 1本 (10:00)
+  → 別 URI で新規登録可能、既存壊さない
+
+
+================================================================
+3. チャンネル識別の設計
+================================================================
+
+config/channels/ に YAML 設定を配置
+generator.py に --channel CLI 引数追加
+
+■ health.yaml (既存チャンネル、後方互換)
+  themes_file: themes/health.txt
+  output_subdir: output (既存互換)
+  lock_file: logs/last_upload_date.txt (既存互換)
+  credentials: credentials.json (既存互換)
+  token: token.json (既存互換)
+  publish_time: "18:00"
+  min_script_chars: 6000
+  max_script_chars: 7500
+  default_tags: [ゆっくり解説, 健康]
+
+■ creatures.yaml (新設)
+  themes_file: themes/creatures.txt
+  output_subdir: output_creatures (完全分離)
+  lock_file: logs/last_upload_date_creatures.txt
+  credentials: credentials_creatures.json
+  token: token_creatures.json
+  publish_time: "19:30"
+  min_script_chars: 8000
+  max_script_chars: 10000
+  narrative_structure: five_act
+  image_provider: wikimedia_commons
+  default_tags: [ゆっくり解説, 生き物, 動物]
+
+既存 run.bat は --channel health をデフォルトで後方互換維持
+
+
+================================================================
+4. 実行スケジュール (直列+時差)
+================================================================
+
+10:00  健康チャンネル (既存 YukkuriDaily)
+12:00  生物チャンネル (新規 CreatureDaily)
+13:00  両チャンネル プリフライト
+18:00  健康 公開 (予約)
+19:30  生物 公開 (予約)
+
+■ 重要な変更
+健康側の3回リトライは最悪 11:50 頃まで続く可能性
+→ 生物側は当初案 11:30 ではなく **12:00 起動** を推奨
+
+■ 並列禁止の理由
+- skill_video_build で ffmpeg が 2〜3GB 消費 → OOM 確定
+- Gemini 2.5 Pro 同時呼び出しで RPM 逼迫
+- 失敗時のログ追跡困難
+
+■ 連動失敗ガード
+- run_creatures.bat 冒頭で健康側の当日完了を確認
+- 生物側が失敗しても健康側は影響を受けない設計
+- lock file と run_dir は完全独立
+
+
+================================================================
+5. 変更が必要なファイル
+================================================================
+
+■ 大改修
+- scripts/prompts.py → scripts/prompts/ パッケージ化
+  prompts/health.py (既存移植)
+  prompts/creatures.py (新設)
+  prompts/__init__.py (互換 re-export)
+- scripts/generator.py
+  --channel 引数、_pick_theme・_create_run_dir を channel-aware 化
+- scripts/auth_utils.py
+  get_credentials(channel_config) に変更
+- scripts/skills/skill_upload.py
+  lock_path / tags / channel ID 検証を config から
+- scripts/skills/skill_script_gen.py
+  文字数閾値を config から、prompts モジュール動的 import
+
+■ 中改修
+- skill_metadata.py (説明文・タグ・AI 開示文を config から)
+- thumbnail_director.py (_THEMES を config から)
+- image_generator.py (シーン例を channel 別に分岐)
+- preflight_check.py (両チャンネル対応)
+- run_monitor.py (両チャンネル post-run 監視)
+- run.bat (--channel health 引数追加)
+
+■ 小改修
+- characters.py (get_character_roles(channel) 追加)
+- notifier.py (通知文に [health]/[creatures] プレフィックス)
+- claude_watchdog.py (両チャンネル死活チェック)
+
+
+================================================================
+6. 変更不要で流用するファイル (最大の資産)
+================================================================
+
+■ 動画合成 (最も複雑、共通化価値大)
+- scripts/video_builder.py (2500行)
+- scripts/audio_processor.py
+- scripts/font_utils.py
+
+■ 音声合成
+- scripts/tts.py
+- scripts/tts_aquestalk.py
+- scripts/tts_client.py
+- scripts/aquestalk_synth.ps1
+
+■ 共通ユーティリティ
+- scripts/llm_client.py
+- scripts/providers.py
+- scripts/model_config.py (既に多プロバイダ対応)
+- scripts/secrets.py (keyring 抽象化済み)
+- scripts/error_logger.py
+- scripts/network_check.py
+
+■ チャンネル非依存のスキル
+- skill_tts.py
+- skill_video_build.py
+- skill_pronunciation.py
+- skill_prosody.py
+- skill_se_assign.py
+- skill_cache_cleanup.py
+- skill_self_review.py
+- skills/self_healing.py
+
+
+================================================================
+7. 新設が必要なファイル
+================================================================
+
+■ 設定・ローダー
+- config/channels/health.yaml
+- config/channels/creatures.yaml
+- scripts/_channel.py (80〜120行、load_channel 関数のみ)
+
+■ プロンプト・テーマ
+- scripts/prompts/creatures.py
+  5幕プロンプト・冒頭6パターン・結末5パターン
+- themes/creatures.txt
+  5カテゴリ × 30 = 150 テーマ
+- state/creatures_rotation.json
+  冒頭・結末・カテゴリのローテーション状態
+
+■ 画像取得
+- scripts/hybrid_selector.py
+  ローテーション + テーマ相性スコア
+- scripts/wikimedia_fetcher.py
+  学名検索 + CC BY-SA ライセンス情報取得
+- scripts/skills/skill_creature_images.py
+  生物画像取得 (Wikimedia メイン、補助は後日)
+- scripts/skills/skill_credits.py
+  エンドクレジット画面生成
+
+■ 認証・実行基盤
+- credentials_creatures.json (手動登録)
+- token_creatures.json (初回 OAuth 時に生成)
+- run_creatures.bat
+- task_creatures_daily.xml (12:00 起動)
+- logs/last_upload_date_creatures.txt
+- output_creatures/ (独立ディレクトリ)
+
+
+================================================================
+8. 懸念点・リスク トップ10
+================================================================
+
+1. 認証情報の取り違え (最重要)
+   → skill_upload 冒頭で channels().list(mine=True) を呼び
+     expected_channel_id と不一致なら fail-closed
+   → metadata.json にも channel_id 記録で二重防御
+
+2. Phase2 実装中に健康チャンネルが壊れる
+   → Step1 の抽象化リファクタで既存挙動完全一致を
+     Codex adversarial review で確認してから次へ
+   → DRY_RUN と実投稿の両方で確認
+
+3. prompts.py 分割時にナラティブスタイル文言が破損
+   → ファイル移動のみ、文言変更ゼロ
+   → 互換 re-export で import 文変更不要
+
+4. 生物台本が5幕17分になり既存文字数閾値と不整合
+   → channel config で閾値上書き可能にする
+
+5. Wikimedia ライセンス欠損
+   → skill_credits がライセンス情報必須フィールド化
+   → 欠損時は該当画像破棄 + 全破棄なら台本中断
+
+6. 11:30 起動が健康側リトライと衝突
+   → 12:00 起動に変更を推奨
+
+7. 1日1本ルールの合算誤動作
+   → channel 別 lock_file で独立
+   → YouTube API 側も forMine=True で自動分離
+
+8. preflight 13:00 実行時に片方だけ失敗した場合
+   → 両チャンネル独立に修復
+   → 片方失敗でも他方のアップロードをブロックしない
+
+9. Discord 通知のチャンネル識別
+   → 通知文先頭に [health]/[creatures] プレフィックス必須
+
+10. 3チャンネル以上への拡張時のテスト負担
+    → Phase2 で smoke test を新設
+
+
+================================================================
+9. 3歩先チェック (自動検出項目)
+================================================================
+
+- チャンネル識別誤りの検知
+  output_{channel}/{run_dir}/manifest.json に channel_id を記録
+  run_monitor.py が不一致を検知
+
+- prompts モジュール not found
+  load_channel() 時点で import を検証、失敗なら fail-closed
+
+- config 読み込み失敗
+  yaml parse エラーは起動時即死、サイレントフォールバック禁止
+
+- 時刻衝突
+  11:30 と 12:00 の両方で健康パイプラインが動いている場合の
+  検知を claude_watchdog に追加
+
+
+================================================================
+10. フェーズ2以降の実装計画
+================================================================
+
+■ Phase 2: 抽象化リファクタ (健康のみ、後方互換)
+  2-1  config/channels/health.yaml + _channel.py 新設
+  2-2  prompts.py → prompts/health.py にファイル移動
+       prompts/__init__.py で互換 re-export
+  2-3  generator.py に --channel 引数追加 (デフォルト health)
+  2-4  auth_utils / skill_upload / skill_script_gen /
+       skill_metadata を channel-aware に
+  2-5  Codex adversarial review 通過
+  [ここでユーザー目視確認 → 承認後に Phase 3 へ]
+
+■ Phase 3: 生物固有要素の実装
+  3-1  scripts/prompts/creatures.py 作成
+  3-2  scripts/hybrid_selector.py 作成
+  3-3  themes/creatures.txt 作成
+  3-4  scripts/wikimedia_fetcher.py 作成
+  3-5  scripts/skills/skill_creature_images.py 作成
+  3-6  scripts/skills/skill_credits.py 作成
+  3-7  config/channels/creatures.yaml 作成
+
+■ Phase 4: インフラ統合
+  4-1  run_creatures.bat 作成
+  4-2  task_creatures_daily.xml 作成 (12:00 起動)
+  4-3  preflight_check.py を両チャンネル対応に
+  4-4  claude_watchdog.py を両チャンネル対応に
+  4-5  Discord 通知のチャンネルプレフィックス追加
+
+■ Phase 5: 本番投入前の最終検証
+  5-1  新 YouTube チャンネル作成
+       credentials_creatures.json 登録
+  5-2  [TEST] プレフィックス動画を非公開で1本作成
+  5-3  Codex adversarial review 通過
+  5-4  ユーザー承認後に本番投入
+       最初の3日は毎朝手動確認
+
+
+================================================================
+11. 既存仕組みとの整合性
+================================================================
+
+スケジューラ         OK (新規 CreatureDaily、既存は無改修)
+1日1本ルール         OK (channel 別 lock file で独立)
+プリフライト         要改修 (Phase 4-3 で両チャンネル対応)
+自己修復             OK (run_dir 単位で動作、既存のまま)
+キャッシュ清掃       要改修 (output_creatures も対象化)
+Codex 協議           OK (Phase 2-5 と 5-3 で adversarial)
+3歩先チェック        OK (本設計案に4問全て反映済み)
+
+
+================================================================
+12. lessons.md 記録候補 (今回の調査で判明した制約)
+================================================================
+
+1. credentials/token が PROJECT_ROOT 固定
+   = マルチチャンネル前提で書かれていない
+2. last_upload_date.txt が単一ファイル
+   = 1日1本ロックは全チャンネル合算
+3. output/{run_id}_{theme}/ にチャンネル識別子なし
+   = used_themes 判定が破綻
+4. prompts.py 1093行が全面健康特化
+   = 分割にはパッケージ化が必須
+5. thumbnail_director のキャラクター位置が固定
+6. image_generator の _build_image_prompt が健康生活シーン前提
+7. generator.py の OUTPUT_DIR 固定が多数のスキルに波及
+
+
+================================================================
+13. 承認いただきたい6項目
+================================================================
+
+1. パターン3 採用の同意
+   共通基盤 + 設定分離
+   健康チャンネルの後方互換を最優先
+
+2. 生物起動時刻 12:00 への同意
+   当初 11:30 から変更
+   健康側の3回リトライ衝突を回避
+
+3. config 形式は YAML で良いか
+   JSON でも可能
+   YAML はコメントが書けるので運用しやすい
+
+4. output_creatures/ でディレクトリ完全分離
+   健康は output/ のまま維持
+   生物は output_creatures/ を新設
+
+5. Wikimedia ライセンス fail-closed 動作
+   ライセンス取得失敗時は該当画像を破棄
+   1本の動画で全画像が破棄されたら台本中断
+
+6. Phase 2 Step 2-4 の後に一度停止
+   健康側の既存動作が壊れていないことを
+   ユーザー目視で確認していただく
+
+
+================================================================
+実装には着手していません
+================================================================
+
+上記の設計案について、承認 / 修正指示 / 追加調査要望を
+お願いします。OK が出てから Phase 2 に進みます。
+
+原本 (Markdown): tasks/phase1_creatures_channel_design.md (367行)
+本ファイル (Text):  tasks/phase1_creatures_channel_design_mobile.txt
