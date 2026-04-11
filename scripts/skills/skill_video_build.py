@@ -20,7 +20,9 @@ from video_builder import build_video, get_bgm_credit
 from ymmp_generator import build_ymmp
 from notifier import notify_error
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "output"
+# Step 3-δ.5c-2: OUTPUT_DIR module-level 定数は削除.
+# invariant: run_dir.parent == output_dir (generator._create_run_dir で保証).
+# run_video_build は run_dir から output_dir を導出し build_ymmp に渡す.
 
 
 def _fmt_ts(seconds: float) -> str:
@@ -118,6 +120,8 @@ def run_video_build(run_dir: str | Path) -> dict:
         {"video_path": str, "ymmp_path": str|None}
     """
     run_dir = Path(run_dir)
+    # Step 3-δ.5c-2: invariant `run_dir.parent == output_dir` を本 Step でも維持.
+    output_dir = run_dir.parent
     logger = SkillLogger(run_dir, "video_build")
     update_phase(run_dir, "video_build", "in_progress")
 
@@ -214,7 +218,7 @@ def run_video_build(run_dir: str | Path) -> dict:
             try:
                 ymmp_path = build_ymmp(
                     script,
-                    output_dir=OUTPUT_DIR,
+                    output_dir=output_dir,
                     audio_dir=audio_dir,
                 )
                 logger.log(f"YMM4プロジェクト: {ymmp_path}")
@@ -245,11 +249,41 @@ def run_video_build(run_dir: str | Path) -> dict:
 
 def main():
     import argparse
+    import sys as _sys
     parser = argparse.ArgumentParser(description="動画生成スキル")
     parser.add_argument("--run-dir", required=True, help="パイプラインの実行ディレクトリ")
+    parser.add_argument("--channel", default="health", choices=["health"],
+                        help="チャンネルID (creatures は Step 3-δ.5c-7 で開放)")
     args = parser.parse_args()
 
-    result = run_video_build(args.run_dir)
+    # Step 3-δ.5c-2: channel config 読込 (fail-closed, generator.py と同形の二段 try).
+    try:
+        from _channel import load_channel, ChannelLoadError
+    except Exception as _ce_imp:
+        print(f"エラー: _channel モジュール import 失敗: {_ce_imp}")
+        _sys.exit(1)
+    try:
+        channel = load_channel(args.channel)
+    except ChannelLoadError as _ce_load:
+        print(f"エラー: channel config 読込失敗 ({args.channel}): {_ce_load}")
+        _sys.exit(1)
+
+    _project_root = Path(__file__).parent.parent.parent
+    _output_dir = _project_root / channel.paths.output_subdir
+
+    # Step 3-δ.5c-2: invariant guard (Codex 対立レビュー指摘).
+    _run_dir_resolved = Path(args.run_dir).resolve()
+    _output_dir_resolved = _output_dir.resolve()
+    if _run_dir_resolved.parent != _output_dir_resolved:
+        print(f"エラー: --run-dir の親 ({_run_dir_resolved.parent}) が")
+        print(f"       channel '{args.channel}' の output_dir ({_output_dir_resolved}) と一致しません")
+        print(f"       --run-dir は output_dir 直下の run ディレクトリを指定してください")
+        _sys.exit(1)
+
+    # Step 3-δ.5c-2: canonicalization 整合 (Codex Round2 指摘).
+    # guard で resolved された path をそのまま run_video_build に渡すことで
+    # symlink / junction 経由の --run-dir でも output_dir 実体が揺らがない.
+    result = run_video_build(_run_dir_resolved)
     print(f"\n動画: {result['video_path']}")
     if result["ymmp_path"]:
         print(f"YMM4: {result['ymmp_path']}")
