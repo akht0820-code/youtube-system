@@ -13,13 +13,14 @@ from pathlib import Path
 from notifier import notify_error, notify_start, notify_success
 from skills.self_healing import run_phase_with_healing
 
-OUTPUT_DIR = Path(__file__).parent.parent / "output"
+# Step 3-δ.4: OUTPUT_DIR の module-level 定数は削除.
+# main() で channel.paths.output_subdir から動的に解決し, 3 helper に引数で渡す.
 
 
-def _pick_theme_from_file(themes_path: Path) -> str:
+def _pick_theme_from_file(themes_path: Path, output_dir: Path) -> str:
     """themes.txt からランダムにテーマを1つ選ぶ（使用済みテーマを除外）
 
-    themes_path は呼び出し元 (main) が channel config から解決して渡す。
+    themes_path / output_dir は呼び出し元 (main) が channel config から解決して渡す。
     """
     import random
     if not themes_path.exists():
@@ -30,7 +31,7 @@ def _pick_theme_from_file(themes_path: Path) -> str:
 
     used: set[str] = set()
     try:
-        for d in OUTPUT_DIR.iterdir():
+        for d in output_dir.iterdir():
             if d.is_dir() and re.match(r"\d{8}_\d{6}_", d.name):
                 used.add(d.name[16:])
     except Exception:
@@ -43,22 +44,22 @@ def _pick_theme_from_file(themes_path: Path) -> str:
     return random.choice(candidates)
 
 
-def _create_run_dir(theme: str) -> tuple[Path, str, str]:
+def _create_run_dir(theme: str, output_dir: Path) -> tuple[Path, str, str]:
     """実行ディレクトリを作成し、(run_dir, run_id, safe_theme) を返す"""
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_theme = re.sub(r'[\\/:*?"<>|]', "", theme)[:30]
-    run_dir = OUTPUT_DIR / f"{run_id}_{safe_theme}"
+    run_dir = output_dir / f"{run_id}_{safe_theme}"
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir, run_id, safe_theme
 
 
-def _find_resumable_run() -> Path | None:
+def _find_resumable_run(output_dir: Path) -> Path | None:
     """当日の最新の未完了（in_progress / failed）run_dir を返す。なければ None"""
-    if not OUTPUT_DIR.exists():
+    if not output_dir.exists():
         return None
     today_prefix = datetime.now().strftime("%Y%m%d")
     candidates = []
-    for d in OUTPUT_DIR.iterdir():
+    for d in output_dir.iterdir():
         if not d.is_dir() or not re.match(r"\d{8}_\d{6}_", d.name):
             continue
         # 当日のrun_dirのみ対象
@@ -147,6 +148,9 @@ def main():
     _project_root = Path(__file__).parent.parent
     _themes_path = _project_root / channel.paths.themes_file
     _lock_path = _project_root / channel.paths.lock_file
+    # Step 3-δ.4: output_dir を channel config から解決.
+    # health.json: output_subdir="output" → 旧 OUTPUT_DIR と文字列同一 (bit-identical).
+    _output_dir = _project_root / channel.paths.output_subdir
 
     # ── 1日1本ガード ──────────────────────────────────────
     if args.auto:
@@ -164,7 +168,7 @@ def main():
     _resuming = False
     _resume_manifest = None
     if args.resume:
-        _resume_dir = _find_resumable_run()
+        _resume_dir = _find_resumable_run(_output_dir)
         if _resume_dir:
             from skills._common import load_manifest
             _resume_manifest = load_manifest(_resume_dir)
@@ -245,7 +249,7 @@ def main():
             theme = args.theme
         elif args.auto:
             try:
-                theme = _pick_theme_from_file(_themes_path)
+                theme = _pick_theme_from_file(_themes_path, _output_dir)
             except Exception as e:
                 notify_error("テーマ取得", e)
                 print(f"エラー: {e}")
@@ -286,7 +290,7 @@ def main():
         manifest = _resume_manifest
         run_id = manifest["run_id"]
     else:
-        run_dir, run_id, safe_theme = _create_run_dir(theme)
+        run_dir, run_id, safe_theme = _create_run_dir(theme, _output_dir)
         from skills._common import create_manifest
         # Step 3-δ.1: channel_id を pipeline.json に記録 (no-op; consumer は Step 3-δ.2)
         manifest = create_manifest(run_dir, theme, run_id, channel_id=args.channel)

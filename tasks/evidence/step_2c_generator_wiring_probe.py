@@ -90,11 +90,12 @@ PAYLOAD_IMPORT_GEN = textwrap.dedent(
 
     # main 関数の存在確認 (実行はしない)
     assert callable(getattr(generator, 'main', None)), "generator.main not callable"
-    # _pick_theme_from_file signature が themes_path を受けることを確認
+    # _pick_theme_from_file signature が themes_path / output_dir を受けることを確認
+    # Step 3-δ.4: output_dir 引数追加 (OUTPUT_DIR module-level 定数削除)
     import inspect
     sig = inspect.signature(generator._pick_theme_from_file)
     params = list(sig.parameters.keys())
-    assert params == ['themes_path'], f"unexpected signature params: {params}"
+    assert params == ['themes_path', 'output_dir'], f"unexpected signature params: {params}"
     print(f"OK _pick_theme_from_file signature: {sig}")
 
     print("PROBE_OK_IMPORT")
