@@ -288,7 +288,8 @@ def main():
     else:
         run_dir, run_id, safe_theme = _create_run_dir(theme)
         from skills._common import create_manifest
-        manifest = create_manifest(run_dir, theme, run_id)
+        # Step 3-δ.1: channel_id を pipeline.json に記録 (no-op; consumer は Step 3-δ.2)
+        manifest = create_manifest(run_dir, theme, run_id, channel_id=args.channel)
     print(f"実行ディレクトリ: {run_dir}\n")
 
     _t0 = time.perf_counter()

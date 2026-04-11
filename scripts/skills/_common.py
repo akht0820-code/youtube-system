@@ -90,10 +90,21 @@ PHASE_ORDER = [
 ]
 
 
-def create_manifest(run_dir: Path, theme: str, run_id: str) -> dict:
-    """新しいパイプラインマニフェストを作成する"""
+def create_manifest(run_dir: Path, theme: str, run_id: str,
+                    channel_id: str = "health") -> dict:
+    """新しいパイプラインマニフェストを作成する.
+
+    Step 3-δ.1: channel_id を root-level に記録するが, 本 Step では
+    どの consumer も参照しない (完全 no-op). 呼び出し元 (generator.py) で
+    --channel 引数の値を渡す. default='health' で後方互換.
+    Step 3-δ.2 以降で consumer (skill_upload / preflight_runtime 等) が
+    manifest['channel_id'] を読むことを検討中. 旧 run (channel_id 無し)
+    の扱いは候補方針として 'health' フォールバックだが, Step 3-δ.2 着手時に
+    改めて Codex レビューで確定する.
+    """
     manifest = {
         "run_id": run_id,
+        "channel_id": channel_id,
         "theme": theme,
         "status": "in_progress",
         "created_at": datetime.now().isoformat(),
