@@ -142,6 +142,68 @@ class TestHealthLoad(unittest.TestCase):
 
 
 # =============================================================================
+# C01-C09: creatures.json happy path (Step 3-β regression protection)
+# =============================================================================
+
+class TestCreaturesLoad(unittest.TestCase):
+    """creatures.json を実ファイルから load し、全フィールドが期待値通りか検証.
+
+    Step 3-α (creatures.json 追加) に対する永続 regression 保護.
+    probe (tasks/evidence/step_3a_creatures_load_probe.py) は一回限りの evidence.
+    本テストは毎回実行され, creatures.json の破壊を検知する.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cfg = load_channel("creatures")
+
+    def test_C01_returns_channel_config(self):
+        self.assertIsInstance(self.cfg, ChannelConfig)
+
+    def test_C02_schema_version(self):
+        self.assertEqual(self.cfg.schema_version, 1)
+
+    def test_C03_id(self):
+        self.assertEqual(self.cfg.id, "creatures")
+
+    def test_C04_paths(self):
+        self.assertIsInstance(self.cfg.paths, ChannelPaths)
+        self.assertEqual(self.cfg.paths.output_subdir, "output_creatures")
+        self.assertEqual(self.cfg.paths.themes_file, "themes_creatures.txt")
+        self.assertEqual(self.cfg.paths.lock_file, "logs/last_upload_date_creatures.txt")
+
+    def test_C05_oauth(self):
+        self.assertIsInstance(self.cfg.oauth, ChannelOAuth)
+        self.assertEqual(self.cfg.oauth.credentials, "credentials_creatures.json")
+        self.assertEqual(self.cfg.oauth.token, "token_creatures.json")
+
+    def test_C06_script(self):
+        self.assertIsInstance(self.cfg.script, ChannelScript)
+        self.assertEqual(self.cfg.script.min_chars, 8000)
+        self.assertEqual(self.cfg.script.max_chars, 10000)
+
+    def test_C07_tags(self):
+        self.assertIsInstance(self.cfg.tags, ChannelTags)
+        self.assertEqual(self.cfg.tags.default, ("ゆっくり解説", "生き物", "動物", "生態"))
+
+    def test_C08_frozen_dataclass(self):
+        with self.assertRaises(Exception):
+            self.cfg.id = "health"  # type: ignore[misc]
+
+    def test_C09_tags_default_is_tuple(self):
+        self.assertIsInstance(self.cfg.tags.default, tuple)
+
+    def test_C10_no_collision_with_health(self):
+        """creatures paths/oauth が health と bit 単位で分離していること."""
+        health = load_channel("health")
+        self.assertNotEqual(self.cfg.paths.output_subdir, health.paths.output_subdir)
+        self.assertNotEqual(self.cfg.paths.themes_file, health.paths.themes_file)
+        self.assertNotEqual(self.cfg.paths.lock_file, health.paths.lock_file)
+        self.assertNotEqual(self.cfg.oauth.credentials, health.oauth.credentials)
+        self.assertNotEqual(self.cfg.oauth.token, health.oauth.token)
+
+
+# =============================================================================
 # T10: channel_id regex rejection
 # =============================================================================
 
