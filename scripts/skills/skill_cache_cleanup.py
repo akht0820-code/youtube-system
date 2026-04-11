@@ -21,7 +21,7 @@ ensure_scripts_path()
 from notifier import notify_error
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-OUTPUT_DIR = BASE_DIR / "output"
+# Step 3-δ.5a: OUTPUT_DIR module-level 定数は削除. 各 helper は output_dir 引数で受け取る.
 LOG_DIR = BASE_DIR / "logs"
 SCRIPTS_DIR = BASE_DIR / "scripts"
 
@@ -60,12 +60,12 @@ def get_pronunciation_hashes() -> dict[str, str]:
 
 # ── クリーンアップ対象別の関数 ────────────────────────────
 
-def _get_in_progress_dirs() -> set[Path]:
+def _get_in_progress_dirs(output_dir: Path) -> set[Path]:
     """現在 in_progress のrun_dirを返す（並行実行保護用）"""
     active = set()
-    if not OUTPUT_DIR.exists():
+    if not output_dir.exists():
         return active
-    for d in OUTPUT_DIR.iterdir():
+    for d in output_dir.iterdir():
         if not d.is_dir() or not re.match(r"\d{8}_\d{6}_", d.name):
             continue
         pj = d / "pipeline.json"
@@ -79,12 +79,12 @@ def _get_in_progress_dirs() -> set[Path]:
     return active
 
 
-def cleanup_temp_files(dry_run: bool = False) -> list[str]:
+def cleanup_temp_files(output_dir: Path, dry_run: bool = False) -> list[str]:
     """output/ 以下の一時ファイル・ディレクトリを削除する（in_progress runはスキップ）"""
     deleted = []
-    active_dirs = _get_in_progress_dirs()
+    active_dirs = _get_in_progress_dirs(output_dir)
     for pattern in _TEMP_PATTERNS:
-        for f in OUTPUT_DIR.rglob(pattern):
+        for f in output_dir.rglob(pattern):
             if f.is_file():
                 if any(f.resolve().is_relative_to(ad) for ad in active_dirs):
                     continue
@@ -92,7 +92,7 @@ def cleanup_temp_files(dry_run: bool = False) -> list[str]:
                 if not dry_run:
                     _safe_unlink(f)
     for pattern in TEMP_DIR_GLOBS:
-        for d in OUTPUT_DIR.rglob(pattern):
+        for d in output_dir.rglob(pattern):
             if d.is_dir():
                 if any(d.resolve().is_relative_to(ad) for ad in active_dirs):
                     continue
@@ -102,12 +102,12 @@ def cleanup_temp_files(dry_run: bool = False) -> list[str]:
     return deleted
 
 
-def cleanup_old_wav_dirs(dry_run: bool = False) -> list[str]:
+def cleanup_old_wav_dirs(output_dir: Path, dry_run: bool = False) -> list[str]:
     """_WAV_KEEP_DAYS 日以上前のWAVディレクトリを削除する"""
     cutoff = time.time() - _WAV_KEEP_DAYS * 86400
     deleted = []
     try:
-        for d in OUTPUT_DIR.iterdir():
+        for d in output_dir.iterdir():
             if d.is_dir() and re.match(r"\d{8}_\d{6}_", d.name):
                 if d.stat().st_mtime < cutoff:
                     deleted.append(str(d))
@@ -143,7 +143,7 @@ def _parse_root_filename_timestamp(name: str) -> float | None:
         return None
 
 
-def cleanup_old_root_videos(dry_run: bool = False) -> list[str]:
+def cleanup_old_root_videos(output_dir: Path, dry_run: bool = False) -> list[str]:
     """output/ 直下の古い MP4 / サムネ画像を削除する。
 
     削除対象（_ROOT_VIDEO_KEEP_DAYS 日以上前）:
@@ -163,14 +163,14 @@ def cleanup_old_root_videos(dry_run: bool = False) -> list[str]:
     cutoff = time.time() - _ROOT_VIDEO_KEEP_DAYS * 86400
     deleted: list[str] = []
     failures: list[str] = []
-    if not OUTPUT_DIR.exists():
+    if not output_dir.exists():
         return deleted
 
     try:
-        entries = list(OUTPUT_DIR.iterdir())
+        entries = list(output_dir.iterdir())
     except OSError as e:
         # iterdir 自体の失敗は監視機能の死亡なのでログに出す
-        print(f"  [cleanup] OUTPUT_DIR.iterdir() 失敗: {e}")
+        print(f"  [cleanup] output_dir.iterdir() 失敗: {e}")
         return deleted
 
     for p in entries:
@@ -215,12 +215,12 @@ def cleanup_old_root_videos(dry_run: bool = False) -> list[str]:
     return deleted
 
 
-def cleanup_failed_pipelines(dry_run: bool = False) -> list[str]:
+def cleanup_failed_pipelines(output_dir: Path, dry_run: bool = False) -> list[str]:
     """失敗して _FAILED_KEEP_DAYS 日以上経過したパイプラインを削除する"""
     cutoff = time.time() - _FAILED_KEEP_DAYS * 86400
     deleted = []
     try:
-        for d in OUTPUT_DIR.iterdir():
+        for d in output_dir.iterdir():
             if not d.is_dir() or not re.match(r"\d{8}_\d{6}_", d.name):
                 continue
             pipeline_path = d / "pipeline.json"
@@ -301,12 +301,19 @@ def cleanup_stale_wav_for_run(run_dir: Path, dry_run: bool = False) -> list[str]
 def run_cache_cleanup(
     run_dir: str | Path | None = None,
     dry_run: bool = False,
+    output_dir: Path | None = None,
 ) -> dict:
     """キャッシュクリーンアップを実行する。
     run_dir 指定時はそのディレクトリの発音キャッシュのみ対象。
-    run_dir 省略時は output/ 全体を対象。
+    run_dir 省略時は output_dir 全体を対象（output_dir 必須）。
     """
-    log_dir = OUTPUT_DIR if run_dir is None else Path(run_dir)
+    # Step 3-δ.5a: silent None fallback を排除. caller は run_dir か output_dir の
+    # どちらかを必ず渡す. 両方 None は設計上あり得ない.
+    if run_dir is None and output_dir is None:
+        raise TypeError(
+            "run_cache_cleanup: run_dir と output_dir の両方 None は不可"
+        )
+    log_dir = Path(run_dir) if run_dir is not None else output_dir
     logger = SkillLogger(log_dir, "cache_cleanup")
     logger.log("=== キャッシュクリーンアップ開始 ===")
     mode = "[DRY-RUN] " if dry_run else ""
@@ -326,23 +333,23 @@ def run_cache_cleanup(
         if stale:
             logger.log(f"{mode}発音変更により {len(stale)} WAVファイルを削除")
     else:
-        # output/ 全体のクリーンアップ
-        temp = cleanup_temp_files(dry_run)
+        # output_dir 全体のクリーンアップ
+        temp = cleanup_temp_files(output_dir, dry_run)
         report["temp_files"] = temp
         if temp:
             logger.log(f"{mode}一時ファイル {len(temp)} 件削除")
 
-        old = cleanup_old_wav_dirs(dry_run)
+        old = cleanup_old_wav_dirs(output_dir, dry_run)
         report["old_wav_dirs"] = old
         if old:
             logger.log(f"{mode}古いWAVディレクトリ {len(old)} 件削除")
 
-        old_root = cleanup_old_root_videos(dry_run)
+        old_root = cleanup_old_root_videos(output_dir, dry_run)
         report["old_root_videos"] = old_root
         if old_root:
             logger.log(f"{mode}古いroot動画/サムネ {len(old_root)} 件削除")
 
-        failed = cleanup_failed_pipelines(dry_run)
+        failed = cleanup_failed_pipelines(output_dir, dry_run)
         report["failed_pipelines"] = failed
         if failed:
             logger.log(f"{mode}失敗パイプライン {len(failed)} 件削除")
@@ -355,11 +362,29 @@ def run_cache_cleanup(
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="キャッシュクリーンアップ")
-    parser.add_argument("--run-dir", default=None, help="対象ディレクトリ（省略時: output/全体）")
+    parser.add_argument("--run-dir", default=None, help="対象ディレクトリ（省略時: --channel から resolve）")
     parser.add_argument("--dry-run", action="store_true", help="削除せず対象を表示のみ")
+    # Step 3-δ.5a: --channel 追加. creatures 開放は Step 3-δ.5c.
+    parser.add_argument("--channel", default="health", choices=["health"],
+                        help="チャンネルID (creatures は Step 3-δ.5c で開放)")
     args = parser.parse_args()
 
-    report = run_cache_cleanup(args.run_dir, args.dry_run)
+    # --run-dir 未指定の場合のみ channel config から output_dir を解決
+    output_dir = None
+    if args.run_dir is None:
+        try:
+            from _channel import load_channel, ChannelLoadError
+        except Exception as _ce_imp:
+            print(f"[致命的] _channel モジュール import 失敗: {_ce_imp}")
+            sys.exit(1)
+        try:
+            cfg = load_channel(args.channel)
+        except ChannelLoadError as _ce_load:
+            print(f"[致命的] チャンネル設定読込失敗 ({args.channel}): {_ce_load}")
+            sys.exit(1)
+        output_dir = BASE_DIR / cfg.paths.output_subdir
+
+    report = run_cache_cleanup(args.run_dir, args.dry_run, output_dir=output_dir)
 
     # 結果表示
     for category, items in report.items():

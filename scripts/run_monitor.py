@@ -319,7 +319,8 @@ def _cleanup_old_audio_dirs() -> int:
     """キャッシュクリーンアップスキルに委譲する"""
     try:
         from skills.skill_cache_cleanup import run_cache_cleanup
-        report = run_cache_cleanup()
+        # Step 3-δ.5a: run_monitor は health only tool. 自身の OUTPUT_DIR を明示的に渡す.
+        report = run_cache_cleanup(output_dir=OUTPUT_DIR)
         return len(report.get("old_wav_dirs", [])) + len(report.get("temp_files", []))
     except Exception:
         # フォールバック: スキルが使えない場合は従来ロジック

@@ -277,7 +277,8 @@ def main():
     if not _resuming:
         try:
             from skills.skill_cache_cleanup import run_cache_cleanup
-            _cleanup = run_cache_cleanup()  # run_dir省略 = output/全体対象
+            # Step 3-δ.5a: channel-aware cleanup (output_dir を明示的に渡す)
+            _cleanup = run_cache_cleanup(output_dir=_output_dir)
             _cleanup_total = sum(len(v) for v in _cleanup.values())
             if _cleanup_total:
                 print(f"  [起動時クリーンアップ] {_cleanup_total} 件削除しました")
