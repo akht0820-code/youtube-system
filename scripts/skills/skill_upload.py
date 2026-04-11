@@ -25,7 +25,9 @@ import model_config
 from youtube_uploader import upload_video, get_video_url, delete_auto_captions, is_test_video
 from notifier import notify_error, notify_success
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "output"
+# Step 3-δ.5c-4: OUTPUT_DIR module-level 定数は削除.
+# run_upload は run_dir.parent から output_dir を導出し generate_community_post に渡す.
+# invariant: run_dir.parent == output_dir (generator._create_run_dir で保証).
 
 # NOTE (Step 2-ε): lock_path は run_upload() 冒頭で channel config から解決する.
 # module-level に置いていた hardcoded _lock_path は削除した.
@@ -91,6 +93,8 @@ def run_upload(
         {"video_id": str|None, "url": str|None, "community_post": str|None}
     """
     run_dir = Path(run_dir)
+    # Step 3-δ.5c-4: invariant `run_dir.parent == output_dir` を本 Step でも維持.
+    output_dir = run_dir.parent
     logger = SkillLogger(run_dir, "upload")
     update_phase(run_dir, "upload", "in_progress")
 
@@ -385,7 +389,7 @@ def run_upload(
         community_post_path = None
         try:
             community_post_path = generate_community_post(
-                youtube_title, description, url or "", OUTPUT_DIR
+                youtube_title, description, url or "", output_dir
             )
             if community_post_path:
                 logger.log(f"コミュニティ投稿文: {community_post_path}")
@@ -422,6 +426,7 @@ def run_upload(
 
 def main():
     import argparse
+    import sys as _sys
     parser = argparse.ArgumentParser(description="YouTubeアップロードスキル")
     parser.add_argument("--run-dir", required=True, help="パイプラインの実行ディレクトリ")
     parser.add_argument("--publish-time", type=str, default=None,
@@ -432,10 +437,55 @@ def main():
                         help="アップロードをスキップ")
     parser.add_argument("--skip-wait", action="store_true",
                         help="ボット判定回避の待機をスキップ")
+    parser.add_argument("--channel", default="health", choices=["health"],
+                        help="チャンネルID (creatures は Step 3-δ.5c-7 で開放)")
     args = parser.parse_args()
 
+    # Step 3-δ.5c-4: channel config 読込 (fail-closed, generator.py と同形の二段 try).
+    try:
+        from _channel import load_channel, ChannelLoadError
+    except Exception as _ce_imp:
+        print(f"エラー: _channel モジュール import 失敗: {_ce_imp}")
+        _sys.exit(1)
+
+    # Step 3-δ.5c-4: manifest.channel_id との cross-check (Codex Round1 指摘).
+    # upload は OAuth/投稿先にも関わるため, CLI --channel と manifest.channel_id の
+    # 不一致は fail-closed にする. 旧 run (channel_id 欠如) は 'health' フォールバック.
+    _run_dir_resolved = Path(args.run_dir).resolve()
+    try:
+        _m_for_check = load_manifest(_run_dir_resolved)
+    except Exception as _me:
+        print(f"エラー: manifest 読込失敗: {_me}")
+        _sys.exit(1)
+    _manifest_channel = _m_for_check.get("channel_id", "health")
+    if not isinstance(_manifest_channel, str) or not _manifest_channel:
+        print(f"エラー: manifest.channel_id が不正: {_manifest_channel!r}")
+        _sys.exit(1)
+    if _manifest_channel != args.channel:
+        print(f"エラー: CLI --channel ({args.channel}) と manifest.channel_id "
+              f"({_manifest_channel}) が一致しません (fail-closed)")
+        _sys.exit(1)
+
+    try:
+        channel = load_channel(args.channel)
+    except ChannelLoadError as _ce_load:
+        print(f"エラー: channel config 読込失敗 ({args.channel}): {_ce_load}")
+        _sys.exit(1)
+
+    _project_root = Path(__file__).parent.parent.parent
+    _output_dir = _project_root / channel.paths.output_subdir
+
+    # Step 3-δ.5c-4: invariant guard (Codex 対立レビュー指摘).
+    _output_dir_resolved = _output_dir.resolve()
+    if _run_dir_resolved.parent != _output_dir_resolved:
+        print(f"エラー: --run-dir の親 ({_run_dir_resolved.parent}) が")
+        print(f"       channel '{args.channel}' の output_dir ({_output_dir_resolved}) と一致しません")
+        print(f"       --run-dir は output_dir 直下の run ディレクトリを指定してください")
+        _sys.exit(1)
+
+    # Step 3-δ.5c-4: canonicalization 整合 (guard と同じ resolved path を渡す).
     result = run_upload(
-        args.run_dir,
+        _run_dir_resolved,
         publish_time=args.publish_time,
         publish_hours=args.publish_hours,
         no_upload=args.no_upload,
