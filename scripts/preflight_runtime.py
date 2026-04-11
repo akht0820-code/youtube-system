@@ -34,10 +34,9 @@ def _check_network() -> list[str]:
     return []
 
 
-def _check_token_json() -> list[str]:
+def _check_token_json(token_path: Path) -> list[str]:
     """token.jsonの存在と有効期限をファイルベースで確認（API呼び出しなし）"""
     errors = []
-    token_path = PROJECT_ROOT / "token.json"
     if not token_path.exists():
         errors.append("[NG] token.jsonが存在しません")
         return errors
@@ -62,9 +61,8 @@ def _check_token_json() -> list[str]:
     return errors
 
 
-def _check_credentials() -> list[str]:
+def _check_credentials(cred_path: Path) -> list[str]:
     """credentials.jsonの存在確認"""
-    cred_path = PROJECT_ROOT / "credentials.json"
     if not cred_path.exists():
         return ["[NG] credentials.jsonが存在しません"]
     return []
@@ -82,20 +80,14 @@ def _check_disk_space() -> list[str]:
     return []
 
 
-def _check_duplicate_upload() -> list[str]:
+def _check_duplicate_upload(lock_path: Path) -> list[str]:
     """本日のアップロード済み確認"""
-    # Step 2-ε: lock_file は channel config から解決
-    try:
-        from _channel import load_channel, ChannelLoadError
-        cfg = load_channel('health')
-    except (ImportError, ChannelLoadError) as e:
-        return [f"[NG] channel config 読込失敗 (重複チェック): {e}"]
-    lock_file = PROJECT_ROOT / cfg.paths.lock_file
-    if not lock_file.exists():
+    # Step 3-δ.5b: lock_path は main() から channel config 経由で受け取る
+    if not lock_path.exists():
         return []
 
     try:
-        content = lock_file.read_text(encoding="utf-8").strip()
+        content = lock_path.read_text(encoding="utf-8").strip()
         today = datetime.now().strftime("%Y-%m-%d")
         if content.startswith(today):
             return [
@@ -107,19 +99,21 @@ def _check_duplicate_upload() -> list[str]:
 
 
 def main():
+    # Step 3-δ.5b: --channel 追加 + channel config から paths 解決.
+    # channel config load 失敗時も channel 非依存チェック (network/disk) は
+    # 継続実行して診断力を維持する (Codex Round 1 指摘対応).
+    import argparse
+    parser = argparse.ArgumentParser(description="起動前ヘルスチェック")
+    parser.add_argument("--channel", default="health", choices=["health"],
+                        help="チャンネルID (creatures は Step 3-δ.5c で開放)")
+    args = parser.parse_args()
+
     print(f"=== 起動前ヘルスチェック ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')}) ===")
+    print(f"  [channel] {args.channel}")
 
     all_errors = []
 
-    checks = [
-        ("ネットワーク接続", _check_network),
-        ("OAuth2トークン", _check_token_json),
-        ("認証ファイル", _check_credentials),
-        ("ディスク容量", _check_disk_space),
-        ("重複アップロード", _check_duplicate_upload),
-    ]
-
-    for name, func in checks:
+    def _run_check(name: str, func):
         try:
             errors = func()
             if errors:
@@ -132,6 +126,29 @@ def main():
             msg = f"[NG] {name}チェックでクラッシュ: {e}"
             all_errors.append(msg)
             print(f"  {msg}")
+
+    # ── channel 非依存チェック (channel config の成否に関わらず常に実行) ──
+    _run_check("ネットワーク接続", _check_network)
+    _run_check("ディスク容量", _check_disk_space)
+
+    # ── channel config load (失敗時は all_errors に積んで通知経路を温存) ──
+    cfg = None
+    try:
+        from _channel import load_channel, ChannelLoadError
+        cfg = load_channel(args.channel)
+    except Exception as _ce:
+        msg = f"[NG] channel config 読込失敗 ({args.channel}): {_ce}"
+        all_errors.append(msg)
+        print(f"  {msg}")
+
+    # ── channel 依存チェック (cfg がある時のみ実行) ──
+    if cfg is not None:
+        token_path = PROJECT_ROOT / cfg.oauth.token
+        cred_path = PROJECT_ROOT / cfg.oauth.credentials
+        lock_path = PROJECT_ROOT / cfg.paths.lock_file
+        _run_check("OAuth2トークン", lambda: _check_token_json(token_path))
+        _run_check("認証ファイル", lambda: _check_credentials(cred_path))
+        _run_check("重複アップロード", lambda: _check_duplicate_upload(lock_path))
 
     if all_errors:
         print(f"\n[NG] {len(all_errors)}件の問題を検出 - 10:00タスクに影響する可能性があります")
