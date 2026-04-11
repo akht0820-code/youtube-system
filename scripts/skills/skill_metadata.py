@@ -29,7 +29,9 @@ from image_generator import generate_background
 from notifier import notify_error
 from script_repair import extract_json_safe
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "output"
+# Step 3-δ.5c-3: OUTPUT_DIR module-level 定数は削除 (dead code).
+# run_metadata は run_dir.parent を直接参照して bg_path を組み立てる.
+# invariant: run_dir.parent == output_dir (generator._create_run_dir で保証).
 
 
 # ── ヘルパー関数 ──────────────────────────────────────────
@@ -388,11 +390,39 @@ def run_metadata(
 
 def main():
     import argparse
+    import sys as _sys
     parser = argparse.ArgumentParser(description="メタデータ生成スキル")
     parser.add_argument("--run-dir", required=True, help="パイプラインの実行ディレクトリ")
+    parser.add_argument("--channel", default="health", choices=["health"],
+                        help="チャンネルID (creatures は Step 3-δ.5c-7 で開放)")
     args = parser.parse_args()
 
-    result = run_metadata(args.run_dir)
+    # Step 3-δ.5c-3: channel config 読込 (fail-closed, generator.py と同形の二段 try).
+    try:
+        from _channel import load_channel, ChannelLoadError
+    except Exception as _ce_imp:
+        print(f"エラー: _channel モジュール import 失敗: {_ce_imp}")
+        _sys.exit(1)
+    try:
+        channel = load_channel(args.channel)
+    except ChannelLoadError as _ce_load:
+        print(f"エラー: channel config 読込失敗 ({args.channel}): {_ce_load}")
+        _sys.exit(1)
+
+    _project_root = Path(__file__).parent.parent.parent
+    _output_dir = _project_root / channel.paths.output_subdir
+
+    # Step 3-δ.5c-3: invariant guard (Codex 対立レビュー指摘).
+    _run_dir_resolved = Path(args.run_dir).resolve()
+    _output_dir_resolved = _output_dir.resolve()
+    if _run_dir_resolved.parent != _output_dir_resolved:
+        print(f"エラー: --run-dir の親 ({_run_dir_resolved.parent}) が")
+        print(f"       channel '{args.channel}' の output_dir ({_output_dir_resolved}) と一致しません")
+        print(f"       --run-dir は output_dir 直下の run ディレクトリを指定してください")
+        _sys.exit(1)
+
+    # Step 3-δ.5c-3: canonicalization 整合 (guard と同じ resolved path を渡す).
+    result = run_metadata(_run_dir_resolved)
     print(f"\n説明文: {result['description'][:100]}...")
     print(f"タグ: {result['tags']}")
     print(f"サムネイルキャプション: {result['thumbnail_caption']}")
