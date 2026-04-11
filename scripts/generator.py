@@ -87,7 +87,10 @@ def _phase_completed(manifest: dict, phase: str) -> bool:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser()
+    # Step 3-γ: allow_abbrev=False で --ch / --auto_ 等の省略形 prefix match を禁止
+    # (Codex レビュー 2026-04-11 指摘). 既存 consumer (run.bat / run_preflight.bat /
+    # .github/workflows) は全て完全形のみ使用しているため副作用なし.
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--auto",          action="store_true", help="自動実行モード")
     parser.add_argument("--theme",         type=str, default="", help="テーマを直接指定")
     parser.add_argument("--publish-hours", type=int, default=0,  help="N時間後に予約投稿")
@@ -95,6 +98,16 @@ def main():
     parser.add_argument("--no-upload",     action="store_true",  help="アップロードをスキップ")
     parser.add_argument("--script-file",   type=str, default="", help="外部台本JSONファイルのパス")
     parser.add_argument("--resume",        action="store_true",  help="当日の失敗/未完了run_dirから再開（対象なしは失敗終了）")
+    # Step 3-γ: --channel で読み込むチャンネル設定を選択. default='health' で
+    # 既存の 10時タスク (run.bat) と bit-identical.
+    # choices は 'health' のみ. 'creatures' は OUTPUT_DIR / skill_upload /
+    # auth_utils の channel-aware 化と同時に Step 3-δ で choices へ追加する.
+    # 先行して creatures を choices に入れると, --theme / --script-file / --resume
+    # 経路で混成実行 (creatures台本 を health OAuth で投稿) が silent success する
+    # リスクがあるため, 根元 (argparse) で遮断する (Codex 対立レビュー 2026-04-11 指摘).
+    parser.add_argument("--channel",       type=str, default="health",
+                        choices=["health"],
+                        help="チャンネルID (default: health). creatures は Step 3-δ で開放予定")
     args = parser.parse_args()
 
     # 注: --auto と --resume の併用は run.bat のリトライフローで使用される。
@@ -122,11 +135,11 @@ def main():
         sys.exit(1)
 
     try:
-        channel = load_channel("health")
+        channel = load_channel(args.channel)
     except ChannelLoadError as _ce_load:
-        print(f"[致命的] チャンネル設定読込失敗: {_ce_load}")
+        print(f"[致命的] チャンネル設定読込失敗 ({args.channel}): {_ce_load}")
         try:
-            notify_error("チャンネル設定読込失敗", _ce_load)
+            notify_error(f"チャンネル設定読込失敗 ({args.channel})", _ce_load)
         except Exception:
             pass
         sys.exit(1)
