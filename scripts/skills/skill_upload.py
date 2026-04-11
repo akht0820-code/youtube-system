@@ -26,7 +26,13 @@ from youtube_uploader import upload_video, get_video_url, delete_auto_captions, 
 from notifier import notify_error, notify_success
 
 OUTPUT_DIR = Path(__file__).parent.parent.parent / "output"
-_lock_path = Path(__file__).parent.parent.parent / "logs" / "last_upload_date.txt"
+
+# NOTE (Step 2-ε): lock_path は run_upload() 冒頭で channel config から解決する.
+# module-level に置いていた hardcoded _lock_path は削除した.
+# これにより skill_upload.py 単独実行 (--run-dir 診断等) の --no-upload 経路でも
+# channel config 破損時は ChannelLoadError → RuntimeError で fail-closed 化する
+# (Codex Medium advisory). lock を使わない no_upload 経路でも config 依存になる点は
+# 運用上許容範囲 (診断時もすべての環境整合を優先).
 
 
 # ── ヘルパー関数 ──────────────────────────────────────────
@@ -89,6 +95,17 @@ def run_upload(
     update_phase(run_dir, "upload", "in_progress")
 
     try:
+        # ── Step 2-ε: channel config から lock_path を解決 (fail-closed) ──
+        # --no-upload 経路でも config 破損時は RuntimeError で落ちる (Codex Medium advisory 合意済み).
+        # 注: 外側 try の中に置くことで, config 読込失敗時も update_phase("failed") +
+        # notify_error が発動する (Codex P2 指摘 2026-04-11 対応).
+        try:
+            from _channel import load_channel, ChannelLoadError
+            _cfg = load_channel('health')
+        except (ImportError, ChannelLoadError) as _ce:
+            raise RuntimeError(f"チャンネル設定読込失敗 (upload): {_ce}") from _ce
+        _lock_path = Path(__file__).parent.parent.parent / _cfg.paths.lock_file
+
         # 前提チェック: video_build と thumbnail が完了していること
         if not check_prerequisites(run_dir, "upload", ["video_build", "thumbnail"]):
             raise RuntimeError("前提フェーズ 'video_build' または 'thumbnail' が未完了です")

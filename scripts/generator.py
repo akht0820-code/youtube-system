@@ -103,24 +103,11 @@ def main():
     # 事故の根本原因は併用そのものではなく、--resume 対象なし時のサイレントフォールバック。
     # 後段（L126付近）で対象なし時に sys.exit(1) する対策を取る。
 
-    # ── 1日1本ガード ──────────────────────────────────────
-    # NOTE (Step 2-γ): _lock_path は今回 hardcoded のまま残す。
-    # channel.paths.lock_file への移行は Step 2-δ で generator.py と
-    # upload 側 (skill_upload の lock 書き込み) を同一 PR で切り替える。
-    # 片側だけの切り替えは禁止 (Codex advisory)。
-    _lock_path = Path(__file__).parent.parent / "logs" / "last_upload_date.txt"
-    if args.auto:
-        _today = datetime.now().strftime("%Y-%m-%d")
-        if _lock_path.exists():
-            _lock_content = _lock_path.read_text(encoding="utf-8").strip()
-            _lock_date = _lock_content.split("|", 1)[0]
-            if _lock_date == _today:
-                print(f"[スキップ] 本日({_today})は既に動画を投稿済みです。")
-                sys.exit(0)
-
     # ── チャンネル設定を読み込む (fail-closed; import / load 両方通知付き) ──
-    # 配置意図: 1日1本ガードの後に置くことで「本日投稿済み skip」経路は
-    # load_channel を呼ばずに sys.exit(0) する。skip 時の現行互換を保つため。
+    # Step 2-ε: 1日1本ガードの _lock_path も cfg 由来にしたため, load_channel を
+    # 1日1本ガードの **前** に移動した (Step 2-γ では後ろに置いていた).
+    # 運用意味の変化: config 破損時は 1日1本ガード skip 経路も fail-closed で
+    # 死ぬ. 静かに壊れるより fail-closed で Discord 通知の方が安全という意図仕様.
     # except Exception は ImportError/ModuleNotFoundError/SyntaxError 等を
     # 網羅するが, SystemExit と KeyboardInterrupt は意図的に捕捉しない
     # (BaseException まで広げない)。
@@ -146,6 +133,17 @@ def main():
 
     _project_root = Path(__file__).parent.parent
     _themes_path = _project_root / channel.paths.themes_file
+    _lock_path = _project_root / channel.paths.lock_file
+
+    # ── 1日1本ガード ──────────────────────────────────────
+    if args.auto:
+        _today = datetime.now().strftime("%Y-%m-%d")
+        if _lock_path.exists():
+            _lock_content = _lock_path.read_text(encoding="utf-8").strip()
+            _lock_date = _lock_content.split("|", 1)[0]
+            if _lock_date == _today:
+                print(f"[スキップ] 本日({_today})は既に動画を投稿済みです。")
+                sys.exit(0)
 
     print("=== ゆっくり解説動画 台本生成システム ===\n")
 

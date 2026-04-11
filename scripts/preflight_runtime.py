@@ -84,7 +84,13 @@ def _check_disk_space() -> list[str]:
 
 def _check_duplicate_upload() -> list[str]:
     """本日のアップロード済み確認"""
-    lock_file = LOGS_DIR / "last_upload_date.txt"
+    # Step 2-ε: lock_file は channel config から解決
+    try:
+        from _channel import load_channel, ChannelLoadError
+        cfg = load_channel('health')
+    except (ImportError, ChannelLoadError) as e:
+        return [f"[NG] channel config 読込失敗 (重複チェック): {e}"]
+    lock_file = PROJECT_ROOT / cfg.paths.lock_file
     if not lock_file.exists():
         return []
 
