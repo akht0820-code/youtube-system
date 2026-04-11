@@ -1,0 +1,24 @@
+[probe] ---- CHANNEL probe ----
+[probe] python_exe=C:\Users\user\AppData\Local\Programs\Python\Python311\python.exe
+[probe] child_cwd=C:\Users\user\Desktop\youtube-system\scripts
+cwd=C:\Users\user\Desktop\youtube-system\scripts
+sys.path[0]=
+python=3.11.9
+OK step1: from _channel import ... succeeded
+OK step2: load_channel('health') -> id=health themes=themes.txt lock=logs/last_upload_date.txt
+OK step3: themes_path exists: C:\Users\user\Desktop\youtube-system\themes.txt
+OK step4: lock_path parent exists: C:\Users\user\Desktop\youtube-system\logs
+OK step5: bit-identical with current hardcoded paths
+PROBE_OK_CHANNEL
+[probe] ---- CHANNEL probe exit: 0 ----
+[probe] CHANNEL probe RESULT: OK
+[probe] ---- IMPORT GENERATOR probe ----
+[probe] python_exe=C:\Users\user\AppData\Local\Programs\Python\Python311\python.exe
+[probe] child_cwd=C:\Users\user\Desktop\youtube-system\scripts
+cwd=C:\Users\user\Desktop\youtube-system\scripts
+OK import generator: file=C:\Users\user\Desktop\youtube-system\scripts\generator.py
+OK _pick_theme_from_file signature: (themes_path: pathlib.Path) -> str
+PROBE_OK_IMPORT
+[probe] ---- IMPORT GENERATOR probe exit: 0 ----
+[probe] IMPORT GENERATOR probe RESULT: OK
+[probe] RESULT: ALL OK

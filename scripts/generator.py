@@ -16,12 +16,14 @@ from skills.self_healing import run_phase_with_healing
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
 
-def _pick_theme_from_file() -> str:
-    """themes.txt からランダムにテーマを1つ選ぶ（使用済みテーマを除外）"""
+def _pick_theme_from_file(themes_path: Path) -> str:
+    """themes.txt からランダムにテーマを1つ選ぶ（使用済みテーマを除外）
+
+    themes_path は呼び出し元 (main) が channel config から解決して渡す。
+    """
     import random
-    themes_path = Path(__file__).parent.parent / "themes.txt"
     if not themes_path.exists():
-        raise FileNotFoundError("themes.txt が見つかりません")
+        raise FileNotFoundError(f"themes.txt が見つかりません: {themes_path}")
     lines = [l.strip() for l in themes_path.read_text(encoding="utf-8").splitlines() if l.strip()]
     if not lines:
         raise ValueError("themes.txt にテーマが入っていません")
@@ -102,6 +104,10 @@ def main():
     # 後段（L126付近）で対象なし時に sys.exit(1) する対策を取る。
 
     # ── 1日1本ガード ──────────────────────────────────────
+    # NOTE (Step 2-γ): _lock_path は今回 hardcoded のまま残す。
+    # channel.paths.lock_file への移行は Step 2-δ で generator.py と
+    # upload 側 (skill_upload の lock 書き込み) を同一 PR で切り替える。
+    # 片側だけの切り替えは禁止 (Codex advisory)。
     _lock_path = Path(__file__).parent.parent / "logs" / "last_upload_date.txt"
     if args.auto:
         _today = datetime.now().strftime("%Y-%m-%d")
@@ -111,6 +117,35 @@ def main():
             if _lock_date == _today:
                 print(f"[スキップ] 本日({_today})は既に動画を投稿済みです。")
                 sys.exit(0)
+
+    # ── チャンネル設定を読み込む (fail-closed; import / load 両方通知付き) ──
+    # 配置意図: 1日1本ガードの後に置くことで「本日投稿済み skip」経路は
+    # load_channel を呼ばずに sys.exit(0) する。skip 時の現行互換を保つため。
+    # except Exception は ImportError/ModuleNotFoundError/SyntaxError 等を
+    # 網羅するが, SystemExit と KeyboardInterrupt は意図的に捕捉しない
+    # (BaseException まで広げない)。
+    try:
+        from _channel import load_channel, ChannelLoadError
+    except Exception as _ce_imp:
+        print(f"[致命的] _channel モジュール import 失敗: {_ce_imp}")
+        try:
+            notify_error("チャンネル設定モジュール import失敗", _ce_imp)
+        except Exception:
+            pass
+        sys.exit(1)
+
+    try:
+        channel = load_channel("health")
+    except ChannelLoadError as _ce_load:
+        print(f"[致命的] チャンネル設定読込失敗: {_ce_load}")
+        try:
+            notify_error("チャンネル設定読込失敗", _ce_load)
+        except Exception:
+            pass
+        sys.exit(1)
+
+    _project_root = Path(__file__).parent.parent
+    _themes_path = _project_root / channel.paths.themes_file
 
     print("=== ゆっくり解説動画 台本生成システム ===\n")
 
@@ -199,7 +234,7 @@ def main():
             theme = args.theme
         elif args.auto:
             try:
-                theme = _pick_theme_from_file()
+                theme = _pick_theme_from_file(_themes_path)
             except Exception as e:
                 notify_error("テーマ取得", e)
                 print(f"エラー: {e}")
