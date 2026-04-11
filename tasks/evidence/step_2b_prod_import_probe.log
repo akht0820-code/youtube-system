@@ -1,0 +1,19 @@
+[probe] python_exe=C:\Users\user\AppData\Local\Programs\Python\Python311\python.exe
+[probe] child_cwd=C:\Users\user\Desktop\youtube-system\scripts
+[probe] ---- child stdout ----
+cwd=C:\Users\user\Desktop\youtube-system\scripts
+sys.path[0]=
+python=3.11.9
+OK happy: id=health themes=themes.txt lock=logs/last_upload_date.txt
+OK happy: schema_version=1 script_min=6000 script_max=7500
+OK happy: tags_count=2
+OK error: missing_file
+OK error: regex_violation_dotdot
+OK error: regex_violation_upper
+OK error: empty_string
+INFO secrets.__file__=C:\Users\user\Desktop\youtube-system\scripts\secrets.py
+INFO secrets_is_shadowed_by_scripts=True
+OK module: _channel / _channel_schema do not reference stdlib secrets
+PROBE_OK
+[probe] ---- child exit: 0 ----
+[probe] RESULT: OK
