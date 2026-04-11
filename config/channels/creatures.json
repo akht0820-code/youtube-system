@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "creatures",
+  "paths": {
+    "output_subdir": "output_creatures",
+    "themes_file": "themes_creatures.txt",
+    "lock_file": "logs/last_upload_date_creatures.txt"
+  },
+  "oauth": {
+    "credentials": "credentials_creatures.json",
+    "token": "token_creatures.json"
+  },
+  "script": {
+    "min_chars": 8000,
+    "max_chars": 10000
+  },
+  "tags": {
+    "default": ["ゆっくり解説", "生き物", "動物", "生態"]
+  }
+}
