@@ -48,7 +48,8 @@ _FALLBACK_STRUCTURE = {
     ]
 }
 
-_MIN_SCRIPT_CHARS = 6000  # これ未満なら再生成
+_MIN_SCRIPT_CHARS = 6000  # ソフト目標 (これ未満なら再生成)
+_HARD_MIN_SCRIPT_CHARS = 5200  # ハード下限 (これ未満は fail-closed)
 _MAX_SCRIPT_CHARS = 7500
 
 
@@ -181,15 +182,16 @@ _MARISA_FEMININE_FIXES = [
     (r"ものね([！？。…]*)\s*$", r"もんな\1"),
 ]
 
-# 霊夢セリフの男性語尾 → 女性語尾の置換ルール（文末パターン）
+# 霊夢セリフの男性語尾 → 女性語尾の置換ルール（文末パターン）.
+# 注意: 「だぜ」「なんだぜ」「ってことだぜ」「覚えておけよ」「教えてやる」は
+# 新しい _MARISA_SPEECH_PATTERNS (validator 対になっている 4-tuple 版) 側で
+# 扱うため, ここには入れない.
+# 特に「ってことだぜ」は新テーブルで「→ってことなのよ」, こちらに残すと
+# 「だぜ$→だわ」が先に発火して「ってことだわ」に化けて新テーブルが死ぬ.
+# ここに残っているのは新テーブルに無い fixer-only のパターンのみ.
 _REIMU_MASCULINE_FIXES = [
-    (r"だぜ([！？。…]*)\s*$", r"だわ\1"),
-    (r"なんだぜ", "なんだわ"),
-    (r"ってことだぜ", "ってことだわ"),
     (r"だろ([！？。…]*)\s*$", r"でしょ\1"),
     (r"だぞ([！？。…]*)\s*$", r"だわよ\1"),
-    (r"覚えておけよ", "覚えておいてね"),
-    (r"教えてやる", "教えてあげる"),
 ]
 
 
@@ -198,19 +200,31 @@ def _align_text_to_character(text: str, target_char: str) -> str:
 
     character を入れ替えたら必ずこの関数でテキストも修正すること。
     これにより「魔理沙なのに『わよ』」「霊夢なのに『だぜ』」を防ぐ。
+
+    一人称は魔理沙・霊夢ともに「私」が正 (character-design.md 準拠).
+    「俺」を使っていたら両キャラ共通で「私」に戻す.
+
+    注意: _fix_role_violations() と同じ正規化セット (4-tuple 統一テーブル
+    を含む) をここでも適用する. _sync_all_text() が「最終同期パス」という
+    invariant を保つため, テーブル側の差分が出ないように同じ順序で適用.
+    引用文 (「...」) の保護も同じ _sub_outside_quotes を使う.
     """
+    # 共通: 「俺」→「私」 (魔理沙は女キャラ、一人称は「私」)
+    text = _sub_outside_quotes(r"俺(?![\u4e00-\u9fff])", "私", text)
     if target_char == "魔理沙":
-        # 一人称: 私 → 俺
-        text = re.sub(r"私(?![\u4e00-\u9fff])", "俺", text)
-        # 語尾: 女性語尾 → 男性語尾
+        # 女性語尾 → 男性語尾
         for pat, repl in _MARISA_FEMININE_FIXES:
-            text = re.sub(pat, repl, text)
+            text = _sub_outside_quotes(pat, repl, text)
+        # 霊夢口調の除去 (validator 対のテーブル)
+        for pat, repl, _c, _r in _REIMU_SPEECH_PATTERNS:
+            text = _sub_outside_quotes(pat, repl, text)
     elif target_char == "霊夢":
-        # 一人称: 俺 → 私
-        text = re.sub(r"俺(?![\u4e00-\u9fff])", "私", text)
-        # 語尾: 男性語尾 → 女性語尾
+        # 男性語尾 (fixer-only) → 女性語尾
         for pat, repl in _REIMU_MASCULINE_FIXES:
-            text = re.sub(pat, repl, text)
+            text = _sub_outside_quotes(pat, repl, text)
+        # 魔理沙口調の除去 (validator 対のテーブル)
+        for pat, repl, _c, _r in _MARISA_SPEECH_PATTERNS:
+            text = _sub_outside_quotes(pat, repl, text)
     return text
 
 
@@ -242,15 +256,86 @@ def _sync_all_text(script: dict) -> int:
     return synced
 
 
+# ── 引用符保護ヘルパー ────────────────────────────────────────
+# speech_pattern / pronoun / 呼び方 の自動修正・検出は 「...」 で囲まれた
+# 引用文を無視する. 例: 魔理沙行で『患者は「知らなかった！」と驚いた』の
+# 「知らなかった！」は相手の発言の引用なので、霊夢口調フィルタで書き換えない.
+#
+# 対応方針:
+#  - 整合 (「 と 」 が同数, 入れ子なし): 外側だけに置換/検出
+#  - 不整合 (unbalanced) または 入れ子 (「A「B」C」): 保守的に無変更/無検出
+#    (引用文を壊すリスクを避ける. 違反は次段の AI 検証 or gate に委ねる)
+#
+# 台本では入れ子引用は 『...』 で表記される運用で, 「「」」 の入れ子は稀.
+# 不整合は AI 生成で起こりうるため安全側に倒す.
+
+_QUOTE_SPLIT_RE = re.compile(r"(「[^」]*」)")
+_QUOTE_NEST_RE = re.compile(r"「[^」]*「")
+
+
+def _quotes_are_safe(text: str) -> bool:
+    """text の 「」 が整合 (同数) かつ 入れ子なし なら True."""
+    if text.count("「") != text.count("」"):
+        return False
+    if _QUOTE_NEST_RE.search(text):
+        return False
+    return True
+
+
+def _sub_outside_quotes(pat, repl: str, text: str) -> str:
+    """「...」 の外側だけに re.sub を適用する.
+
+    pat は文字列または re.Pattern. 文字列の場合は内部で re.sub を使う.
+    不整合 / 入れ子 の引用は保守的に無変更で返す.
+    """
+    if not _quotes_are_safe(text):
+        return text
+    parts = _QUOTE_SPLIT_RE.split(text)
+    for i in range(len(parts)):
+        if i % 2 == 0:  # 偶数 index は 「」 の外側
+            if isinstance(pat, str):
+                parts[i] = re.sub(pat, repl, parts[i])
+            else:
+                parts[i] = pat.sub(repl, parts[i])
+    return "".join(parts)
+
+
+def _search_outside_quotes(pat, text: str) -> bool:
+    """「...」 の外側にマッチがあるかだけを判定する.
+
+    pat は文字列または re.Pattern.
+    不整合 / 入れ子 の引用は validator 側では「全文検索にフォールバック」する.
+    理由: fixer は壊すリスクを避けるため無変更で通すが, validator が沈黙すると
+    malformed 引用の行が fail-open で公開される. 全文検索すれば最悪 false
+    positive (引用内の違反を拾う) で gate に止まり再生成が走るため, 安全側.
+    """
+    if not _quotes_are_safe(text):
+        if isinstance(pat, str):
+            return re.search(pat, text) is not None
+        return pat.search(text) is not None
+    parts = _QUOTE_SPLIT_RE.split(text)
+    for i in range(len(parts)):
+        if i % 2 == 0:
+            if isinstance(pat, str):
+                if re.search(pat, parts[i]):
+                    return True
+            else:
+                if pat.search(parts[i]):
+                    return True
+    return False
+
+
 
 def _fix_role_violations(script: dict) -> tuple[dict, int]:
     """台本生成直後にテキスト・表情の口調逸脱を修正する。
 
     修正内容（キャラクター名は変更しない）:
     1. 呼び方修正: 魔理沙が「君」→「お前」に置換
-    2. 一人称修正: 魔理沙が「私」→「俺」/ 霊夢が「俺」→「私」
+    2. 一人称修正: 魔理沙・霊夢ともに「俺」→「私」(両者とも正=「私」, character-design.md 準拠)
     3. 魔理沙の女性語尾修正: 「だわ」→「だぜ」等
-    4. 表情修正: 魔理沙に embarrassed → normal に強制
+    4. 霊夢の男性語尾修正: 「だぜ」→「だわ」等
+    5. line_type 正規化: 自キャラ専用でない line_type を空文字化 (観測用に _original_line_type に退避)
+    6. 表情修正: 魔理沙に embarrassed → normal に強制
 
     ※キャラクター入替は行わない（最終AI検証に一本化）
 
@@ -270,82 +355,69 @@ def _fix_role_violations(script: dict) -> tuple[dict, int]:
             # ── 魔理沙の呼び方修正 ──
             # 「君」「あなた」→霊夢への呼びかけなら「お前」
             # 「あなたたち」→視聴者への呼びかけは「みんな」
+            # 引用文 (「...」) は他者のセリフなので対象外.
             if line.get("character") == "魔理沙":
-                new_text = re.sub(r"君([のはがをもにだ、。！？])", r"お前\1", text)
-                new_text = re.sub(r"あなたたち", "みんな", new_text)
-                new_text = re.sub(r"あなた([のはがをもにだ、。！？])", r"みんな\1", new_text)
+                new_text = text
+                new_text = _sub_outside_quotes(r"君([のはがをもにだ、。！？])", r"お前\1", new_text)
+                new_text = _sub_outside_quotes(r"あなたたち", "みんな", new_text)
+                new_text = _sub_outside_quotes(r"あなた([のはがをもにだ、。！？])", r"みんな\1", new_text)
                 if new_text != text:
                     line["text"] = new_text
                     if "synthesis_text" in line:
-                        line["synthesis_text"] = re.sub(
-                            r"君([のはがをもにだ、。！？])", r"お前\1",
-                            line["synthesis_text"],
-                        )
-                        line["synthesis_text"] = re.sub(
-                            r"あなたたち", "みんな",
-                            line["synthesis_text"],
-                        )
-                        line["synthesis_text"] = re.sub(
-                            r"あなた([のはがをもにだ、。！？])", r"みんな\1",
-                            line["synthesis_text"],
-                        )
+                        s = line["synthesis_text"]
+                        s = _sub_outside_quotes(r"君([のはがをもにだ、。！？])", r"お前\1", s)
+                        s = _sub_outside_quotes(r"あなたたち", "みんな", s)
+                        s = _sub_outside_quotes(r"あなた([のはがをもにだ、。！？])", r"みんな\1", s)
+                        line["synthesis_text"] = s
                     text = new_text
                     modified = True
 
             # ── 一人称修正 ──
-            if line.get("character") == "魔理沙":
-                # 魔理沙が「私」→「俺」
-                # blocklist方式: 私+漢字（私立・私服等の熟語）以外は全て置換
-                new_text = re.sub(r"私(?![\u4e00-\u9fff])", "俺", text)
+            # 魔理沙・霊夢 とも一人称は「私」が正解 (character-design.md 準拠).
+            # 魔理沙=女キャラなので「俺」への強制変換はしない.
+            # 両キャラともに「俺」を使っていたら「私」に戻す.
+            # 引用文 (「...」) は他者のセリフなので対象外.
+            if line.get("character") in ("霊夢", "魔理沙"):
+                new_text = _sub_outside_quotes(r"俺(?![\u4e00-\u9fff])", "私", text)
                 if new_text != text:
                     line["text"] = new_text
                     if "synthesis_text" in line:
-                        line["synthesis_text"] = re.sub(
-                            r"私(?![\u4e00-\u9fff])", "俺",
-                            line["synthesis_text"],
-                        )
-                    text = new_text
-                    modified = True
-
-            elif line.get("character") == "霊夢":
-                # 霊夢が「俺」→「私」
-                new_text = re.sub(r"俺(?![\u4e00-\u9fff])", "私", text)
-                if new_text != text:
-                    line["text"] = new_text
-                    if "synthesis_text" in line:
-                        line["synthesis_text"] = re.sub(
+                        line["synthesis_text"] = _sub_outside_quotes(
                             r"俺(?![\u4e00-\u9fff])", "私",
                             line["synthesis_text"],
                         )
+                    text = new_text  # 下流語尾修正が古い text を参照しないよう更新
                     modified = True
 
             # ── 魔理沙の女性語尾修正 ──
+            # 引用文 (「...」) は他者のセリフなので対象外.
             if line.get("character") == "魔理沙":
                 new_text = text
                 for pat, repl in _MARISA_FEMININE_FIXES:
-                    new_text = re.sub(pat, repl, new_text)
+                    new_text = _sub_outside_quotes(pat, repl, new_text)
                 if new_text != text:
                     line["text"] = new_text
                     if "synthesis_text" in line:
+                        s = line["synthesis_text"]
                         for pat, repl in _MARISA_FEMININE_FIXES:
-                            line["synthesis_text"] = re.sub(
-                                pat, repl, line["synthesis_text"],
-                            )
+                            s = _sub_outside_quotes(pat, repl, s)
+                        line["synthesis_text"] = s
                     text = new_text
                     modified = True
 
             # ── 霊夢の男性語尾修正 ──
+            # 引用文 (「...」) は他者のセリフなので対象外.
             if line.get("character") == "霊夢":
                 new_text = text
                 for pat, repl in _REIMU_MASCULINE_FIXES:
-                    new_text = re.sub(pat, repl, new_text)
+                    new_text = _sub_outside_quotes(pat, repl, new_text)
                 if new_text != text:
                     line["text"] = new_text
                     if "synthesis_text" in line:
+                        s = line["synthesis_text"]
                         for pat, repl in _REIMU_MASCULINE_FIXES:
-                            line["synthesis_text"] = re.sub(
-                                pat, repl, line["synthesis_text"],
-                            )
+                            s = _sub_outside_quotes(pat, repl, s)
+                        line["synthesis_text"] = s
                     text = new_text
                     modified = True
 
@@ -354,6 +426,83 @@ def _fix_role_violations(script: dict) -> tuple[dict, int]:
                 if line.get("emotion") == "embarrassed":
                     line["emotion"] = "normal"
                     modified = True
+
+            # ── speech_pattern 自動修正 (validator と同じテーブルを参照) ──
+            # 霊夢のセリフ → 魔理沙口調を除去, 魔理沙のセリフ → 霊夢口調を除去.
+            # 引用文 (「...」 で囲まれた部分) は他者の発言のため対象外.
+            if char == "霊夢":
+                new_text = text
+                for pat, repl, _conf, _reason in _MARISA_SPEECH_PATTERNS:
+                    new_text = _sub_outside_quotes(pat, repl, new_text)
+                if new_text != text:
+                    line["text"] = new_text
+                    if "synthesis_text" in line:
+                        s = line["synthesis_text"]
+                        for pat, repl, _conf, _reason in _MARISA_SPEECH_PATTERNS:
+                            s = _sub_outside_quotes(pat, repl, s)
+                        line["synthesis_text"] = s
+                    text = new_text
+                    modified = True
+            elif char == "魔理沙":
+                new_text = text
+                for pat, repl, _conf, _reason in _REIMU_SPEECH_PATTERNS:
+                    new_text = _sub_outside_quotes(pat, repl, new_text)
+                if new_text != text:
+                    line["text"] = new_text
+                    if "synthesis_text" in line:
+                        s = line["synthesis_text"]
+                        for pat, repl, _conf, _reason in _REIMU_SPEECH_PATTERNS:
+                            s = _sub_outside_quotes(pat, repl, s)
+                        line["synthesis_text"] = s
+                    text = new_text
+                    modified = True
+
+            # ── name_call 除去 (行頭限定) ──
+            # 自キャラ名の行頭 vocative を削除. 削除後の text が極端に短くなる場合
+            # (意味を失うケース) は削除をロールバックして gate に任せる.
+            _NAME_CALL_PREFIX_MIN = 5  # 行頭 vocative 削除後の最小許容文字数
+            if char == "霊夢":
+                m = re.match(r"^霊夢[、,！!？?…　 ]+", text)
+                if m:
+                    trimmed = text[m.end():]
+                    if len(trimmed) >= _NAME_CALL_PREFIX_MIN:
+                        line["text"] = trimmed
+                        if "synthesis_text" in line:
+                            s = line["synthesis_text"]
+                            sm = re.match(r"^霊夢[、,！!？?…　 ]+", s)
+                            if sm:
+                                line["synthesis_text"] = s[sm.end():]
+                        text = trimmed
+                        modified = True
+            elif char == "魔理沙":
+                m = re.match(r"^魔理沙[、,！!？?…　 ]+", text)
+                if m:
+                    trimmed = text[m.end():]
+                    if len(trimmed) >= _NAME_CALL_PREFIX_MIN:
+                        line["text"] = trimmed
+                        if "synthesis_text" in line:
+                            s = line["synthesis_text"]
+                            sm = re.match(r"^魔理沙[、,！!？?…　 ]+", s)
+                            if sm:
+                                line["synthesis_text"] = s[sm.end():]
+                        text = trimmed
+                        modified = True
+
+            # ── line_type 正規化 ──
+            # 自キャラ専用でない line_type が付いていたら「汎用」に置換.
+            # 空文字にすると下流の se_assign/prosody プロンプトで
+            # `(normal/)` という壊れた hint になるため「汎用」を採用.
+            # (元の値は _original_line_type に退避して観測用に残す.
+            #  この内部フィールドは JSON 保存前に _type_locked と同様に除去する.)
+            lt = line.get("line_type", "")
+            if char == "霊夢" and lt in _MARISA_LINE_TYPES:
+                line["_original_line_type"] = lt
+                line["line_type"] = "汎用"
+                modified = True
+            elif char == "魔理沙" and lt in _REIMU_LINE_TYPES:
+                line["_original_line_type"] = lt
+                line["line_type"] = "汎用"
+                modified = True
 
             if modified:
                 fixed += 1
@@ -365,19 +514,28 @@ def _fix_role_violations(script: dict) -> tuple[dict, int]:
 
 # ── 決定論的バリデーション ──────────────────────────────────────────
 
-# 霊夢のセリフに出現したら違反（魔理沙の口調）
+# validator と fixer で同じテーブルを参照するため
+# (pattern, replacement, confidence, reason) の 4-tuple に統一.
+# replacement は re.sub() に渡す文字列 (後方参照 \1, \2 可).
+# validator は pattern+confidence+reason を使い, fixer は pattern+replacement を使う.
+
+# 霊夢のセリフに出現したら違反（魔理沙の口調）→ 霊夢らしい語尾に置換.
+# 順序依存: 長いパターンを先に置く (短い "だぜ$" が先に発火すると
+# "ってことだぜ" → "ってことだわ" で停止し, 専用の置換が効かなくなる).
 _MARISA_SPEECH_PATTERNS = [
-    (re.compile(r"だぜ[！？。…!?.]*\s*$"), 1.0, "「だぜ」は魔理沙専用の語尾"),
-    (re.compile(r"なんだぜ"), 1.0, "「なんだぜ」は魔理沙専用"),
-    (re.compile(r"ってことだぜ"), 1.0, "「ってことだぜ」は魔理沙専用"),
-    (re.compile(r"覚えておけよ"), 0.95, "教える側の口調"),
-    (re.compile(r"教えてやる"), 0.95, "解説役の口調"),
+    (re.compile(r"ってことだぜ"), "ってことなのよ", 1.0, "「ってことだぜ」は魔理沙専用"),
+    (re.compile(r"なんだぜ"), "なんだわ", 1.0, "「なんだぜ」は魔理沙専用"),
+    (re.compile(r"覚えておけよ"), "覚えておいてね", 0.95, "教える側の口調"),
+    (re.compile(r"教えてやる"), "教えてあげる", 0.95, "解説役の口調"),
+    (re.compile(r"だぜ([！？。…!?.]*)(\s*)$"), r"だわ\1\2", 1.0, "「だぜ」は魔理沙専用の語尾"),
 ]
 
-# 魔理沙のセリフに出現したら違反（霊夢の口調）— confidence低めで慎重に
+# 魔理沙のセリフに出現したら違反（霊夢の口調）→ 魔理沙らしい語尾に置換.
+# 注意: 「知らなかった」「そうなの」は meaning-level の違反 (魔理沙=知識豊富).
+# 語尾だけ直しても意味は変わらないが, gate 通過 + 観測記録で次回改善する戦略.
 _REIMU_SPEECH_PATTERNS = [
-    (re.compile(r"知らなかった[！!]"), 0.7, "聞き手のリアクション"),
-    (re.compile(r"そうなの[？?]"), 0.7, "聞き手の確認"),
+    (re.compile(r"知らなかった([！!])"), r"知らなかったぜ\1", 0.7, "聞き手のリアクション"),
+    (re.compile(r"そうなの([？?])"), r"そうなのか\1", 0.7, "聞き手の確認"),
 ]
 
 
@@ -436,9 +594,10 @@ def deterministic_validate_roles(script: dict) -> list[dict]:
             })
 
         # ── チェック3: 口調パターン ──
+        # 引用文 (「...」) は他者のセリフなので検査対象外 (fixer と対称).
         if char == "霊夢":
-            for pat, conf, reason in _MARISA_SPEECH_PATTERNS:
-                if pat.search(text):
+            for pat, _repl, conf, reason in _MARISA_SPEECH_PATTERNS:
+                if _search_outside_quotes(pat, text):
                     violations.append({
                         "global_idx": i,
                         "check_type": "speech_pattern",
@@ -448,8 +607,8 @@ def deterministic_validate_roles(script: dict) -> list[dict]:
                     })
                     break  # 1行につき最初のマッチのみ
         elif char == "魔理沙":
-            for pat, conf, reason in _REIMU_SPEECH_PATTERNS:
-                if pat.search(text):
+            for pat, _repl, conf, reason in _REIMU_SPEECH_PATTERNS:
+                if _search_outside_quotes(pat, text):
                     violations.append({
                         "global_idx": i,
                         "check_type": "speech_pattern",
@@ -459,39 +618,36 @@ def deterministic_validate_roles(script: dict) -> list[dict]:
                     })
                     break
 
-        # ── チェック4: 名前呼び ──
-        if char == "霊夢" and re.search(r"霊夢[、,！!？?…　 ]", text):
+        # ── チェック4: 名前呼び (行頭限定) ──
+        # 中間出現は引用/言及の可能性があるため flag しない.
+        # fixer も行頭の vocative のみ削除する.
+        if char == "霊夢" and re.match(r"霊夢[、,！!？?…　 ]", text):
             violations.append({
                 "global_idx": i,
                 "check_type": "name_call",
                 "character": char,
-                "detail": "霊夢のセリフで「霊夢」と呼びかけている（魔理沙のセリフ）",
+                "detail": "霊夢のセリフで行頭「霊夢」呼びかけ（魔理沙のセリフ）",
                 "confidence": 0.95,
             })
-        elif char == "魔理沙" and re.search(r"魔理沙[、,！!？?…　 ]", text):
+        elif char == "魔理沙" and re.match(r"魔理沙[、,！!？?…　 ]", text):
             violations.append({
                 "global_idx": i,
                 "check_type": "name_call",
                 "character": char,
-                "detail": "魔理沙のセリフで「魔理沙」と呼びかけている（霊夢のセリフ）",
+                "detail": "魔理沙のセリフで行頭「魔理沙」呼びかけ（霊夢のセリフ）",
                 "confidence": 0.95,
             })
 
         # ── チェック5: 一人称 ──
-        if char == "魔理沙" and re.search(r"私(?![\u4e00-\u9fff])", text):
+        # 魔理沙・霊夢ともに一人称は「私」が正 (character-design.md 準拠).
+        # どちらか一方でも「俺」を使っていたら違反.
+        # 引用文 (「...」) の中の「俺」は他者のセリフなので検査対象外.
+        if char in ("魔理沙", "霊夢") and _search_outside_quotes(r"俺(?![\u4e00-\u9fff])", text):
             violations.append({
                 "global_idx": i,
                 "check_type": "pronoun",
                 "character": char,
-                "detail": "魔理沙が一人称「私」を使用（「俺」が正しい）",
-                "confidence": 0.95,
-            })
-        elif char == "霊夢" and re.search(r"俺(?![\u4e00-\u9fff])", text):
-            violations.append({
-                "global_idx": i,
-                "check_type": "pronoun",
-                "character": char,
-                "detail": "霊夢が一人称「俺」を使用（「私」が正しい）",
+                "detail": f"{char}が一人称「俺」を使用（「私」が正しい）",
                 "confidence": 0.95,
             })
 
@@ -613,12 +769,17 @@ def generate_script(theme: str, structure: dict,
                 )
             expanded_chars = _count_script_chars(expanded)
             print(f"  → 拡充後: {expanded_chars} 文字")
-            if expanded_chars < _MIN_SCRIPT_CHARS:
-                # 拡充後も不足なら fail-closed（3000〜5999字で通してた穴を塞ぐ）
+            # 2段階しきい値: ソフト目標(6000)未達でもハード下限(5200)以上なら採用.
+            # 2026-04-12: 拡充後 5714 字 で即死していた. ハード未満のみ fail-closed.
+            if expanded_chars < _HARD_MIN_SCRIPT_CHARS:
                 raise RuntimeError(
-                    f"拡充後も文字数不足(フォールバック禁止): "
-                    f"{expanded_chars}文字 < {_MIN_SCRIPT_CHARS}文字"
+                    f"拡充後も致命的文字数不足(フォールバック禁止): "
+                    f"{expanded_chars}文字 < ハード下限 {_HARD_MIN_SCRIPT_CHARS}文字"
                 )
+            if expanded_chars < _MIN_SCRIPT_CHARS:
+                print(f"  [警告] 拡充後 {expanded_chars} 文字 < ソフト目標 "
+                      f"{_MIN_SCRIPT_CHARS} 文字だが、ハード下限 "
+                      f"{_HARD_MIN_SCRIPT_CHARS} 以上のため採用")
             candidate = expanded
             script = candidate
             break
@@ -633,17 +794,19 @@ def generate_script(theme: str, structure: dict,
     total_lines = sum(len(s.get("lines", [])) for s in script.get("sections", []))
     print(f"  → {total_lines} 行の台本が生成されました")
 
-    # 文字数チェック
+    # 文字数チェック (ハード下限基準)
     total_chars = _count_script_chars(script)
     print(f"  → セリフ合計文字数: {total_chars} 文字", end="")
-    if total_chars < _MIN_SCRIPT_CHARS:
+    if total_chars < _HARD_MIN_SCRIPT_CHARS:
         est_min = total_chars / 400
-        print(f" [不足] 目標 {_MIN_SCRIPT_CHARS}〜{_MAX_SCRIPT_CHARS} 文字、推定尺: 約{est_min:.0f}分")
-        # Codex Round5: 文字数不足は notify_error だけで通していたが fail-closed 化
-        notify_error("台本文字数不足", ValueError(f"セリフ合計 {total_chars} 文字（目標 {_MIN_SCRIPT_CHARS}〜{_MAX_SCRIPT_CHARS}）"))
+        print(f" [致命的不足] ハード下限 {_HARD_MIN_SCRIPT_CHARS} 文字未満、推定尺: 約{est_min:.0f}分")
+        notify_error("台本文字数致命的不足", ValueError(f"セリフ合計 {total_chars} 文字 < ハード下限 {_HARD_MIN_SCRIPT_CHARS}"))
         raise RuntimeError(
-            f"台本文字数不足(フォールバック禁止): {total_chars}文字 < {_MIN_SCRIPT_CHARS}文字"
+            f"台本文字数致命的不足(フォールバック禁止): {total_chars}文字 < {_HARD_MIN_SCRIPT_CHARS}文字"
         )
+    elif total_chars < _MIN_SCRIPT_CHARS:
+        est_min = total_chars / 400
+        print(f" [警告] ソフト目標 {_MIN_SCRIPT_CHARS} 未達だが採用、推定尺: 約{est_min:.0f}分")
     elif total_chars > _MAX_SCRIPT_CHARS:
         est_min = total_chars / 400
         print(f" [超過] 目標 {_MIN_SCRIPT_CHARS}〜{_MAX_SCRIPT_CHARS} 文字、推定尺: 約{est_min:.0f}分")
@@ -679,12 +842,23 @@ def generate_script(theme: str, structure: dict,
             for v in non_consec[:10]:
                 print(f"      行{v['global_idx']}: [{v['check_type']}] {v['detail']}")
             # Round5: log only では公開物が通ってしまう → raise
+            # 2026-04-12: print() だけでは stdout にしか残らず診断不能だった.
+            # RuntimeError には先頭5件の detail を埋め込み, notify_error には
+            # 短縮版サマリを渡して Discord/daily log で即診断可能にする.
+            _summary_items = [
+                f"行{v['global_idx']}:[{v['check_type']}]{v['detail']}"
+                for v in non_consec[:5]
+            ]
+            _summary_short = " / ".join(_summary_items)
+            if len(non_consec) > 5:
+                _summary_short += f" ... 他{len(non_consec) - 5}件"
             notify_error(
                 "台本最終品質ゲート残存違反",
-                ValueError(f"{len(non_consec)} 件の非連続違反"),
+                ValueError(f"{len(non_consec)} 件の非連続違反: {_summary_short}"),
             )
             raise RuntimeError(
-                f"台本最終品質ゲートに非連続違反 {len(non_consec)} 件(フォールバック禁止)"
+                f"台本最終品質ゲートに非連続違反 {len(non_consec)} 件"
+                f"(フォールバック禁止): {_summary_short}"
             )
         if consec:
             print(f"  [情報] 連続発言: {len(consec)} 箇所（Gemini生出力のまま維持）")
@@ -732,17 +906,19 @@ def generate_script(theme: str, structure: dict,
     for section in script.get("sections", []):
         for line in section.get("lines", []):
             line.pop("_type_locked", None)
+            line.pop("_original_line_type", None)  # 観測用の内部フィールドを除去
             for field in ("text", "synthesis_text"):
                 val = line.get(field)
                 if val and _STAGE_DIR_RE.search(val):
                     line[field] = _STAGE_DIR_RE.sub("", val).strip()
 
-    # Codex Round5: 注釈除去後に再度文字数を検証（strip で MIN 割れを検知）
+    # Codex Round5: 注釈除去後に再度文字数を検証（strip で下限割れを検知）
+    # 2026-04-12: ソフト目標ではなくハード下限で評価.
     post_strip_chars = _count_script_chars(script)
-    if post_strip_chars < _MIN_SCRIPT_CHARS:
+    if post_strip_chars < _HARD_MIN_SCRIPT_CHARS:
         raise RuntimeError(
-            f"ト書き除去後に文字数不足(フォールバック禁止): "
-            f"{post_strip_chars}文字 < {_MIN_SCRIPT_CHARS}文字"
+            f"ト書き除去後に致命的文字数不足(フォールバック禁止): "
+            f"{post_strip_chars}文字 < ハード下限 {_HARD_MIN_SCRIPT_CHARS}文字"
         )
 
     return script, raw_sections

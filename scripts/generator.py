@@ -352,9 +352,12 @@ def main():
                 _script_invalid = True
                 _script_invalid_reason = f"台本JSON読込/パース失敗: {_je}"
 
-        # Codex Round5: 生成ループ側の閾値 _MIN_SCRIPT_CHARS と一致させる
-        # (旧 3000 は生成側 6000 と不整合で、resume時に 3000-5999 字台本が通っていた)
-        from skills.skill_script_gen import _MIN_SCRIPT_CHARS as _RESUME_MIN_CHARS
+        # Codex Round5: 生成ループ側の閾値と一致させる
+        # 2026-04-12: 生成側が 2段階しきい値 (soft 6000 / hard 5200) に切替.
+        # resume は「保存された台本を壊れていないか」の判定なので, 生成側で
+        # 採用された soft-soft 未満 (5200..5999) の台本も再生成対象にしてはいけない.
+        # → ハード下限 _HARD_MIN_SCRIPT_CHARS で判定する.
+        from skills.skill_script_gen import _HARD_MIN_SCRIPT_CHARS as _RESUME_MIN_CHARS
         if _script_invalid or (_chars is not None and _chars < _RESUME_MIN_CHARS):
             _reason = _script_invalid_reason if _script_invalid else f"文字数不足: {_chars}文字 (<{_RESUME_MIN_CHARS})"
             print(f"[再開モード] 台本が無効 ({_reason}) → フェーズ1からやり直します")

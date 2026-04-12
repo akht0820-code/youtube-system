@@ -101,7 +101,10 @@ def notify_error(step: str, error: Exception, context: dict | None = None):
     if context:
         ctx_str = "\n" + "\n".join(f"{k}: {v}" for k, v in context.items())
 
-    message = f"{error_type}: {str(error)[:150]}{tb_snippet}{ctx_str}"
+    # 2026-04-12: 150文字では台本品質ゲートの違反詳細が切り捨てられ
+    # Discord 側で即診断不能だったため 500 文字に拡大.
+    # 最終的には L108/L120 の [:500]/[:1500] で各チャネル上限に収まる.
+    message = f"{error_type}: {str(error)[:500]}{tb_snippet}{ctx_str}"
 
     _send(
         title=f"エラー: {step}",
