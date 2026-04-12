@@ -364,9 +364,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="キャッシュクリーンアップ")
     parser.add_argument("--run-dir", default=None, help="対象ディレクトリ（省略時: --channel から resolve）")
     parser.add_argument("--dry-run", action="store_true", help="削除せず対象を表示のみ")
-    # Step 3-δ.5a: --channel 追加. creatures 開放は Step 3-δ.5c.
+    # Step 3-δ.5a: --channel 追加. creatures 開放は 5c-8 (script char / tags
+    # fallback channel-aware 化) 完了後.
     parser.add_argument("--channel", default="health", choices=["health"],
-                        help="チャンネルID (creatures は Step 3-δ.5c で開放)")
+                        help="チャンネルID (creatures は 5c-8 完了後に開放)")
     args = parser.parse_args()
 
     # --run-dir 未指定の場合のみ channel config から output_dir を解決
@@ -383,6 +384,7 @@ if __name__ == "__main__":
             print(f"[致命的] チャンネル設定読込失敗 ({args.channel}): {_ce_load}")
             sys.exit(1)
         output_dir = BASE_DIR / cfg.paths.output_subdir
+        print(f"[cleanup] channel={args.channel} output_dir={output_dir}")
 
     report = run_cache_cleanup(args.run_dir, args.dry_run, output_dir=output_dir)
 

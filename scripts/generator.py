@@ -101,14 +101,17 @@ def main():
     parser.add_argument("--resume",        action="store_true",  help="当日の失敗/未完了run_dirから再開（対象なしは失敗終了）")
     # Step 3-γ: --channel で読み込むチャンネル設定を選択. default='health' で
     # 既存の 10時タスク (run.bat) と bit-identical.
-    # choices は 'health' のみ. 'creatures' は OUTPUT_DIR / skill_upload /
-    # auth_utils の channel-aware 化と同時に Step 3-δ で choices へ追加する.
-    # 先行して creatures を choices に入れると, --theme / --script-file / --resume
-    # 経路で混成実行 (creatures台本 を health OAuth で投稿) が silent success する
-    # リスクがあるため, 根元 (argparse) で遮断する (Codex 対立レビュー 2026-04-11 指摘).
+    # choices は 'health' のみ. 5c-1〜5c-6 で paths/oauth/themes/output_dir は
+    # channel-aware 化済みだが, 台本文字数閾値 (_MIN/_HARD/_MAX_SCRIPT_CHARS)
+    # と metadata/upload の tags fallback がまだ health ハードコードなので,
+    # creatures を choices に入れると creatures config の min_chars=8000 /
+    # tags=[生き物,動物,生態] と不整合が silent に発生する
+    # (Codex 対立レビュー 2026-04-12 Step 3-δ.5c-7 指摘).
+    # 後続 5c-8 (script char + tags fallback channel-aware 化) 完了時に
+    # choices へ追加する.
     parser.add_argument("--channel",       type=str, default="health",
                         choices=["health"],
-                        help="チャンネルID (default: health). creatures は Step 3-δ で開放予定")
+                        help="チャンネルID (default: health). creatures は 5c-8 完了後に開放")
     args = parser.parse_args()
 
     # 注: --auto と --resume の併用は run.bat のリトライフローで使用される。
