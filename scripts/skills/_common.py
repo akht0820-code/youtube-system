@@ -371,37 +371,69 @@ def _get_available_memory_mb() -> int:
 
 
 def _cleanup_temp_files() -> int:
-    """output/以下の一時ファイル・ディレクトリを削除してディスクキャッシュを解放する。"""
+    """全 channel の output_dir 下の一時ファイル・ディレクトリを削除してディスクキャッシュを解放する.
+
+    Step 3-δ.5c-6: hardcode 'output' → config/channels/*.json を列挙して全 channel
+    の output_subdir を対象. health.output_subdir='output' なので bit-identical.
+    列挙失敗時でも project_root/output は必ず含める (legacy fallback).
+    個別 channel の ChannelLoadError は skip (cleanup は他 channel まで止めない).
+    """
+    import shutil
+    project_root = Path(__file__).parent.parent.parent
     cleaned = 0
+
+    # Step 1: config/channels/*.json から全 channel の output_dir を列挙.
+    output_dirs: list[Path] = []
     try:
-        output_dir = Path(__file__).parent.parent.parent / "output"
-        if not output_dir.exists():
-            return 0
-        # ファイル削除
-        for pattern in ALL_TEMP_GLOBS:
-            for f in output_dir.rglob(pattern):
+        ensure_scripts_path()
+        from _channel import load_channel, ChannelLoadError
+        config_dir = project_root / "config" / "channels"
+        if config_dir.is_dir():
+            for cfg_path in sorted(config_dir.glob("*.json")):
+                channel_id = cfg_path.stem
                 try:
-                    if f.is_file():
-                        size_mb = f.stat().st_size / (1024 * 1024)
-                        f.unlink()
-                        cleaned += int(size_mb)
-                except Exception:
-                    pass
-        # ディレクトリ削除
-        import shutil
-        for pattern in TEMP_DIR_GLOBS:
-            for d in output_dir.rglob(pattern):
-                try:
-                    if d.is_dir():
-                        size_mb = sum(
-                            f.stat().st_size for f in d.rglob("*") if f.is_file()
-                        ) / (1024 * 1024)
-                        shutil.rmtree(d, ignore_errors=True)
-                        cleaned += int(size_mb)
-                except Exception:
-                    pass
+                    cfg = load_channel(channel_id)
+                    od = project_root / cfg.paths.output_subdir
+                    if od not in output_dirs:
+                        output_dirs.append(od)
+                except ChannelLoadError:
+                    continue  # 個別 channel の schema エラーは skip
     except Exception:
-        pass
+        pass  # _channel import / config dir 不在 → legacy fallback だけ動く
+
+    # Step 2: legacy fallback (列挙失敗時でも最低 project_root/output はカバー).
+    legacy_output = project_root / "output"
+    if legacy_output not in output_dirs:
+        output_dirs.append(legacy_output)
+
+    # Step 3: 各 output_dir 下の一時ファイル/ディレクトリを削除.
+    for output_dir in output_dirs:
+        if not output_dir.exists():
+            continue
+        try:
+            for pattern in ALL_TEMP_GLOBS:
+                for f in output_dir.rglob(pattern):
+                    try:
+                        if f.is_file():
+                            size_mb = f.stat().st_size / (1024 * 1024)
+                            f.unlink()
+                            cleaned += int(size_mb)
+                    except Exception:
+                        pass
+            for pattern in TEMP_DIR_GLOBS:
+                for d in output_dir.rglob(pattern):
+                    try:
+                        if d.is_dir():
+                            size_mb = sum(
+                                f.stat().st_size for f in d.rglob("*") if f.is_file()
+                            ) / (1024 * 1024)
+                            shutil.rmtree(d, ignore_errors=True)
+                            cleaned += int(size_mb)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     return cleaned
 
 
