@@ -101,17 +101,11 @@ def main():
     parser.add_argument("--resume",        action="store_true",  help="当日の失敗/未完了run_dirから再開（対象なしは失敗終了）")
     # Step 3-γ: --channel で読み込むチャンネル設定を選択. default='health' で
     # 既存の 10時タスク (run.bat) と bit-identical.
-    # choices は 'health' のみ. 5c-1〜5c-6 で paths/oauth/themes/output_dir は
-    # channel-aware 化済みだが, 台本文字数閾値 (_MIN/_HARD/_MAX_SCRIPT_CHARS)
-    # と metadata/upload の tags fallback がまだ health ハードコードなので,
-    # creatures を choices に入れると creatures config の min_chars=8000 /
-    # tags=[生き物,動物,生態] と不整合が silent に発生する
-    # (Codex 対立レビュー 2026-04-12 Step 3-δ.5c-7 指摘).
-    # 後続 5c-8 (script char + tags fallback channel-aware 化) 完了時に
-    # choices へ追加する.
+    # Step 3-δ.5c-8: script char 閾値 + tags fallback の channel-aware 化完了.
+    # creatures を choices に開放.
     parser.add_argument("--channel",       type=str, default="health",
-                        choices=["health"],
-                        help="チャンネルID (default: health). creatures は 5c-8 完了後に開放")
+                        choices=["health", "creatures"],
+                        help="チャンネルID (default: health)")
     args = parser.parse_args()
 
     # 注: --auto と --resume の併用は run.bat のリトライフローで使用される。
@@ -355,12 +349,10 @@ def main():
                 _script_invalid = True
                 _script_invalid_reason = f"台本JSON読込/パース失敗: {_je}"
 
-        # Codex Round5: 生成ループ側の閾値と一致させる
-        # 2026-04-12: 生成側が 2段階しきい値 (soft 6000 / hard 5200) に切替.
-        # resume は「保存された台本を壊れていないか」の判定なので, 生成側で
-        # 採用された soft-soft 未満 (5200..5999) の台本も再生成対象にしてはいけない.
-        # → ハード下限 _HARD_MIN_SCRIPT_CHARS で判定する.
-        from skills.skill_script_gen import _HARD_MIN_SCRIPT_CHARS as _RESUME_MIN_CHARS
+        # Step 3-δ.5c-8: channel config から resume 判定用ハード下限を取得.
+        # 旧: from skills.skill_script_gen import _HARD_MIN_SCRIPT_CHARS
+        # 新: channel config の hard_min_chars を使用 (channel 間で閾値が異なるため).
+        _RESUME_MIN_CHARS = channel.script.hard_min_chars
         if _script_invalid or (_chars is not None and _chars < _RESUME_MIN_CHARS):
             _reason = _script_invalid_reason if _script_invalid else f"文字数不足: {_chars}文字 (<{_RESUME_MIN_CHARS})"
             print(f"[再開モード] 台本が無効 ({_reason}) → フェーズ1からやり直します")

@@ -665,7 +665,10 @@ def _snapshot_violations(script: dict, label: str) -> int:
 
 
 def generate_script(theme: str, structure: dict,
-                    comedy_design: dict | None = None) -> dict:
+                    comedy_design: dict | None = None,
+                    soft_min_chars: int = _MIN_SCRIPT_CHARS,
+                    hard_min_chars: int = _HARD_MIN_SCRIPT_CHARS,
+                    max_chars: int = _MAX_SCRIPT_CHARS) -> dict:
     """構成から台本を生成（文字数不足時は最大2回再生成）"""
     llm = get_llm()
     print("台本を生成しています...")
@@ -684,7 +687,8 @@ def generate_script(theme: str, structure: dict,
             print(f"  → 文字数不足のため再生成します（{attempt}回目）")
         # 2回目以降は文字数不足の強調を追加
         if attempt > 1:
-            prompt = base_prompt + f"\n\n【緊急指示】前回の生成は {prev_chars} 文字しかなかった。今回は必ず 6,500 文字以上になるよう、各セクションを大幅に拡充して出力すること。特に各章を最低40行以上にすること。"
+            _retry_target = int(soft_min_chars * 1.08)  # ソフト目標の108%を指示
+            prompt = base_prompt + f"\n\n【緊急指示】前回の生成は {prev_chars} 文字しかなかった。今回は必ず {_retry_target:,} 文字以上になるよう、各セクションを大幅に拡充して出力すること。特に各章を最低40行以上にすること。"
         else:
             prompt = base_prompt
         # 全試行でCREATIVE（Pro）を使用（Flashは長文生成が弱いため）
@@ -721,18 +725,19 @@ def generate_script(theme: str, structure: dict,
             )
 
         total_chars = _count_script_chars(candidate)
-        if total_chars >= _MIN_SCRIPT_CHARS:
+        if total_chars >= soft_min_chars:
             script = candidate
             break
-        print(f"  → {total_chars} 文字（目標 {_MIN_SCRIPT_CHARS} 文字未満）")
+        print(f"  → {total_chars} 文字（目標 {soft_min_chars} 文字未満）")
         prev_chars = total_chars
 
         # 3回目でも不足の場合、既存台本を膨らませる
-        if attempt >= 3 and total_chars < _MIN_SCRIPT_CHARS:
+        if attempt >= 3 and total_chars < soft_min_chars:
             print(f"  → 3回とも文字数不足。既存台本を拡充します...")
+            _expand_target_hi = int(max_chars * 1.07)  # max_chars の 107% を上限目安に
             expand_prompt = (
                 f"以下のJSON台本はセリフ合計が{total_chars}文字しかありません。\n"
-                f"目標は6,500〜8,000文字です。あと{_MIN_SCRIPT_CHARS - total_chars}文字以上足りません。\n\n"
+                f"目標は{soft_min_chars:,}〜{_expand_target_hi:,}文字です。あと{soft_min_chars - total_chars}文字以上足りません。\n\n"
                 f"【拡充のルール】\n"
                 f"- 視聴者が「へぇー！」と思う具体的な研究データ・統計・実験結果を追加する\n"
                 f"- 「例えば〜」で始まる日常生活での具体例やたとえ話を追加する\n"
@@ -769,17 +774,17 @@ def generate_script(theme: str, structure: dict,
                 )
             expanded_chars = _count_script_chars(expanded)
             print(f"  → 拡充後: {expanded_chars} 文字")
-            # 2段階しきい値: ソフト目標(6000)未達でもハード下限(5200)以上なら採用.
+            # 2段階しきい値: ソフト目標未達でもハード下限以上なら採用.
             # 2026-04-12: 拡充後 5714 字 で即死していた. ハード未満のみ fail-closed.
-            if expanded_chars < _HARD_MIN_SCRIPT_CHARS:
+            if expanded_chars < hard_min_chars:
                 raise RuntimeError(
                     f"拡充後も致命的文字数不足(フォールバック禁止): "
-                    f"{expanded_chars}文字 < ハード下限 {_HARD_MIN_SCRIPT_CHARS}文字"
+                    f"{expanded_chars}文字 < ハード下限 {hard_min_chars}文字"
                 )
-            if expanded_chars < _MIN_SCRIPT_CHARS:
+            if expanded_chars < soft_min_chars:
                 print(f"  [警告] 拡充後 {expanded_chars} 文字 < ソフト目標 "
-                      f"{_MIN_SCRIPT_CHARS} 文字だが、ハード下限 "
-                      f"{_HARD_MIN_SCRIPT_CHARS} 以上のため採用")
+                      f"{soft_min_chars} 文字だが、ハード下限 "
+                      f"{hard_min_chars} 以上のため採用")
             candidate = expanded
             script = candidate
             break
@@ -794,22 +799,22 @@ def generate_script(theme: str, structure: dict,
     total_lines = sum(len(s.get("lines", [])) for s in script.get("sections", []))
     print(f"  → {total_lines} 行の台本が生成されました")
 
-    # 文字数チェック (ハード下限基準)
+    # 文字数チェック (ハード下限基準, channel config 由来)
     total_chars = _count_script_chars(script)
     print(f"  → セリフ合計文字数: {total_chars} 文字", end="")
-    if total_chars < _HARD_MIN_SCRIPT_CHARS:
+    if total_chars < hard_min_chars:
         est_min = total_chars / 400
-        print(f" [致命的不足] ハード下限 {_HARD_MIN_SCRIPT_CHARS} 文字未満、推定尺: 約{est_min:.0f}分")
-        notify_error("台本文字数致命的不足", ValueError(f"セリフ合計 {total_chars} 文字 < ハード下限 {_HARD_MIN_SCRIPT_CHARS}"))
+        print(f" [致命的不足] ハード下限 {hard_min_chars} 文字未満、推定尺: 約{est_min:.0f}分")
+        notify_error("台本文字数致命的不足", ValueError(f"セリフ合計 {total_chars} 文字 < ハード下限 {hard_min_chars}"))
         raise RuntimeError(
-            f"台本文字数致命的不足(フォールバック禁止): {total_chars}文字 < {_HARD_MIN_SCRIPT_CHARS}文字"
+            f"台本文字数致命的不足(フォールバック禁止): {total_chars}文字 < {hard_min_chars}文字"
         )
-    elif total_chars < _MIN_SCRIPT_CHARS:
+    elif total_chars < soft_min_chars:
         est_min = total_chars / 400
-        print(f" [警告] ソフト目標 {_MIN_SCRIPT_CHARS} 未達だが採用、推定尺: 約{est_min:.0f}分")
-    elif total_chars > _MAX_SCRIPT_CHARS:
+        print(f" [警告] ソフト目標 {soft_min_chars} 未達だが採用、推定尺: 約{est_min:.0f}分")
+    elif total_chars > max_chars:
         est_min = total_chars / 400
-        print(f" [超過] 目標 {_MIN_SCRIPT_CHARS}〜{_MAX_SCRIPT_CHARS} 文字、推定尺: 約{est_min:.0f}分")
+        print(f" [超過] 目標 {soft_min_chars}〜{max_chars} 文字、推定尺: 約{est_min:.0f}分")
     else:
         est_min = total_chars / 400
         print(f" [OK] 推定尺: 約{est_min:.0f}分")
@@ -915,10 +920,10 @@ def generate_script(theme: str, structure: dict,
     # Codex Round5: 注釈除去後に再度文字数を検証（strip で下限割れを検知）
     # 2026-04-12: ソフト目標ではなくハード下限で評価.
     post_strip_chars = _count_script_chars(script)
-    if post_strip_chars < _HARD_MIN_SCRIPT_CHARS:
+    if post_strip_chars < hard_min_chars:
         raise RuntimeError(
             f"ト書き除去後に致命的文字数不足(フォールバック禁止): "
-            f"{post_strip_chars}文字 < ハード下限 {_HARD_MIN_SCRIPT_CHARS}文字"
+            f"{post_strip_chars}文字 < ハード下限 {hard_min_chars}文字"
         )
 
     return script, raw_sections
@@ -994,6 +999,19 @@ def run_script_gen(run_dir: str | Path, theme: str, external_script: dict | None
     logger = SkillLogger(run_dir, "script_gen")
     update_phase(run_dir, "script_gen", "in_progress")
 
+    # Step 3-δ.5c-8: channel config から文字数閾値を取得.
+    # manifest.channel_id は generator.py create_manifest() で必ず書き込まれる.
+    _manifest = load_manifest(run_dir)
+    _ch_id = _manifest.get("channel_id", "health")
+    try:
+        from _channel import load_channel
+        _ch_cfg = load_channel(_ch_id)
+    except Exception as _ce:
+        raise RuntimeError(f"channel config 読込失敗 (script_gen, channel={_ch_id}): {_ce}") from _ce
+    _soft_min = _ch_cfg.script.min_chars
+    _hard_min = _ch_cfg.script.hard_min_chars
+    _max_chars = _ch_cfg.script.max_chars
+
     try:
         # ── フェーズ1: タイトル + 構成を並列生成 ─────────────
         logger.log("【フェーズ1】タイトル・構成を並列生成しています...")
@@ -1043,7 +1061,10 @@ def run_script_gen(run_dir: str | Path, theme: str, external_script: dict | None
             logger.log(f"  → {total_lines} 行の台本を外部から受け取りました")
         else:
             try:
-                script, raw_sections = generate_script(theme, structure, comedy_design=comedy_design)
+                script, raw_sections = generate_script(
+                    theme, structure, comedy_design=comedy_design,
+                    soft_min_chars=_soft_min, hard_min_chars=_hard_min,
+                    max_chars=_max_chars)
             except (ConnectionError, OSError, TimeoutError) as e:
                 # ネットワーク障害は即失敗。フォールバック台本で続行しない。
                 # run.batの3回リトライで回復を試みる。
@@ -1061,10 +1082,16 @@ def run_script_gen(run_dir: str | Path, theme: str, external_script: dict | None
                 raise RuntimeError(f"台本生成失敗(生成結果不正): {e}") from e
 
         # ── 致命的な文字数不足チェック（全フェーズ無駄走り防止） ──
+        # AI生成パスは generate_script() 内でチェック済みだが、
+        # external_script パスはここが唯一のゲート。channel config の
+        # hard_min_chars を使って creatures でも正しくブロックする。
         _total_chars = _count_script_chars(script)
-        _FATAL_THRESHOLD = 3000  # この文字数未満は明らかに失敗
-        if _total_chars < _FATAL_THRESHOLD:
-            _msg = f"台本が致命的に短い: {_total_chars}文字（最低{_FATAL_THRESHOLD}文字）。API障害の可能性。"
+        if _total_chars < _hard_min:
+            _msg = f"台本が致命的に短い: {_total_chars}文字（ハード下限{_hard_min}文字）。"
+            if external_script:
+                _msg += " 外部台本の文字数がチャンネル設定の下限を満たしていません。"
+            else:
+                _msg += " API障害の可能性。"
             logger.error(_msg)
             notify_error("台本生成致命的失敗", ValueError(_msg))
             raise RuntimeError(_msg)
@@ -1156,8 +1183,8 @@ def main():
     parser.add_argument("--run-dir", required=True, help="パイプラインの実行ディレクトリ")
     parser.add_argument("--theme", default="", help="テーマを直接指定（未指定時は themes.txt からランダム選択）")
     parser.add_argument("--script-file", default="", help="外部台本JSONファイルのパス")
-    parser.add_argument("--channel", default="health", choices=["health"],
-                        help="チャンネルID (creatures は 5c-8 完了後に開放)")
+    parser.add_argument("--channel", default="health", choices=["health", "creatures"],
+                        help="チャンネルID")
     args = parser.parse_args()
 
     # Step 3-δ.5c-1: channel config 読込 (fail-closed, generator.py と同形の二段 try).
