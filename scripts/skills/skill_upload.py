@@ -109,6 +109,12 @@ def run_upload(
         # outputs 用 manifest は check_prerequisites 後に再読込する (旧実装と同じ
         # "前提チェック後に fresh snapshot" semantics を維持).
         _m_for_channel = load_manifest(run_dir)
+        # Step 3-δ.5c-5 Round3 反映: manifest が dict でない場合は fail-closed.
+        # (self_healing._fix_delete_token_reauth のポリシーと整合)
+        if not isinstance(_m_for_channel, dict):
+            raise RuntimeError(
+                f"manifest が dict ではない (upload): {type(_m_for_channel).__name__}"
+            )
         if "channel_id" not in _m_for_channel:
             _channel_id = "health"  # 旧 run 互換
         else:

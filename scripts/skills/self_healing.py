@@ -156,14 +156,74 @@ def _fix_delete_wavs_rerun_tts(run_dir, error, ctx):
 
 
 def _fix_delete_token_reauth(run_dir, error, ctx):
-    """token.jsonを削除して再認証"""
-    token_path = Path(__file__).parent.parent.parent / "token.json"
+    """token.jsonを削除して再認証 (Step 3-δ.5c-5 channel-aware 化, Codex Round2 反映).
+
+    ポリシー (Codex Round1+2 反映, fail-closed 寄り):
+    - legacy 'health' fallback を許す条件は2つだけ:
+        (a) pipeline.json が存在しない (FileNotFoundError)
+        (b) pipeline.json は dict で channel_id key が無い (旧 run 互換)
+    - manifest 破損 (JSONDecodeError/UnicodeDecodeError/OSError/dict 以外) は削除中止
+    - channel_id key ありだが値が str 非空でない (int/None/list/空文字 etc.) は削除中止
+    - ChannelLoadError は channel_id が何であっても常に削除中止
+      (skill_upload の fail-closed ポリシーと整合)
+
+    返却値は unlink の 4 状態を区別する (Codex Round1 Medium point3):
+      - "token 削除成功": 削除できた
+      - "token 削除不要": 既に存在しなかった
+      - "token 削除失敗": unlink で例外 (権限/ロック等)
+      - "token 削除中止": channel 解決不能で削除せず
+    """
+    import json as _json
+    project_root = Path(__file__).parent.parent.parent
+
+    # Step 1: manifest から channel_id を取得 (fail-closed 寄り).
+    channel_id = None
+    manifest = None
     try:
-        if token_path.exists():
-            token_path.unlink()
-    except Exception:
-        pass
-    return "token.json を削除（次回APIアクセスで再認証される）"
+        manifest = load_manifest(run_dir)
+    except FileNotFoundError:
+        pass  # manifest 不在 → legacy 'health' fallback 候補
+    except (_json.JSONDecodeError, UnicodeDecodeError, OSError) as _me:
+        return (f"token 削除中止: manifest 読込失敗 ({type(_me).__name__}: {_me}) "
+                f"— 別 channel の token を誤削除しない")
+
+    if manifest is not None:
+        if not isinstance(manifest, dict):
+            return (f"token 削除中止: manifest が dict ではない "
+                    f"({type(manifest).__name__})")
+        if "channel_id" in manifest:
+            mc = manifest["channel_id"]
+            if not isinstance(mc, str) or not mc:
+                return (f"token 削除中止: manifest.channel_id が不正 "
+                        f"({type(mc).__name__}: {mc!r})")
+            channel_id = mc
+        # channel_id key 不在 → legacy 'health' fallback (旧 run 互換)
+
+    if channel_id is None:
+        channel_id = "health"
+
+    # Step 2: _channel import.
+    try:
+        from _channel import load_channel, ChannelLoadError
+    except ImportError as _ie:
+        return f"token 削除中止: _channel import 失敗 ({_ie})"
+
+    # Step 3: channel config を解決 (ChannelLoadError は常に削除中止).
+    try:
+        cfg = load_channel(channel_id)
+    except ChannelLoadError as _ce:
+        return (f"token 削除中止: channel '{channel_id}' の config 読込失敗 "
+                f"({_ce}) — 別 channel の token を誤削除しない")
+    token_path = project_root / cfg.oauth.token
+
+    # Step 4: unlink 4 状態を区別して返却.
+    if not token_path.exists():
+        return f"token 削除不要 ({channel_id}): {token_path.name} は既に存在しない"
+    try:
+        token_path.unlink()
+    except OSError as _ue:
+        return f"token 削除失敗 ({channel_id}): {token_path.name}: {_ue}"
+    return f"token 削除成功 ({channel_id}): {token_path.name}（次回APIアクセスで再認証）"
 
 
 def _fix_memory_cleanup(run_dir, error, ctx):
