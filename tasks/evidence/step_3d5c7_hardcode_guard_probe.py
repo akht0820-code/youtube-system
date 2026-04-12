@@ -6,10 +6,8 @@
      'last_upload_date.txt') が Constant として残っていない
     (allow-list 例外: _common.py の legacy fallback のみ)
 [2] 同 7 ファイルに `OUTPUT_DIR =` の module-level 定数が無い
-[3] 全 CLI エントリポイント (7 箇所) が argparse choices=["health"] のままで
-    creatures が silent に開放されていないこと (gating guard).
-    creatures の choices 開放は 5c-8 (script char 閾値 + tags fallback の
-    channel-aware 化) 完了後とする (Codex 対立レビュー 2026-04-12 指摘).
+[3] 全 CLI エントリポイント (7 箇所) が argparse choices=["health", "creatures"]
+    に開放されていること (5c-8 完了確認).
 [4] creatures channel config (config/channels/creatures.json) が load 可能
     + output_subdir='output_creatures' + credentials='credentials_creatures.json'
     を解決できる (config ファイル自体の sanity, choices 未開放でも有効)
@@ -18,15 +16,11 @@
 - Step 3-δ.5c-1〜5c-6 commit 済み, すべて regression zero.
 - 本 Step は verification helper のみ. 既存 channel-aware ロジックは触らない.
 
-なぜ [3] が「choices=['health'] のまま」を assert するのか:
-- 5c-1〜5c-6 で channel-aware 化された範囲は paths/oauth/themes/output_dir のみ.
-- skill_script_gen.py の _MIN/_HARD/_MAX_SCRIPT_CHARS は health 固定値
-  (6000/5200/7500) で, creatures config (min_chars=8000/max_chars=10000) と不整合.
-- skill_metadata.py (L305) と skill_upload.py (L170) の fallback tags が
-  ['ゆっくり解説','健康'] で, creatures config (['生き物','動物','生態']) と不整合.
-- この状態で creatures を choices に開放すると, 部分失敗 fallback 経路で
-  creatures 動画が '健康' タグ付き silent success する危険がある.
-- 本 probe は「まだ choices 開放していないか」を gating guard として守る.
+[3] は 5c-8 完了後の choices 開放を確認する:
+- 5c-8a: hard_min_chars schema + config 追加.
+- 5c-8b: script_gen の閾値 + prompt を channel config から取得.
+- 5c-8c: metadata/upload の tags fallback を channel config から取得.
+- 5c-8d: 全 7 CLI の choices を ["health", "creatures"] に開放.
 """
 import ast
 import json
@@ -116,8 +110,8 @@ for target in TARGET_FILES:
     )
 
 
-# ── [3] argparse choices 現状ロック (creatures 未開放 guard) ───
-print("[3] argparse choices=['health'] のまま (creatures 未開放 guard)")
+# ── [3] argparse choices 開放確認 (5c-8 完了) ───────────────
+print("[3] argparse choices=['health', 'creatures'] (5c-8 開放済み)")
 # --channel の argparse 呼び出しがある 7 CLI エントリポイント.
 CLI_FILES = [
     SCRIPTS_DIR / "preflight_runtime.py",
@@ -157,8 +151,8 @@ for cli in CLI_FILES:
                 break
         break
     expect(
-        found_choices is not None and found_choices == ["health"],
-        f"{cli.name}: --channel choices == ['health'] (got: {found_choices})",
+        found_choices is not None and found_choices == ["health", "creatures"],
+        f"{cli.name}: --channel choices == ['health', 'creatures'] (got: {found_choices})",
     )
 
 

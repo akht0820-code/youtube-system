@@ -104,8 +104,8 @@ def main():
     # 継続実行して診断力を維持する (Codex Round 1 指摘対応).
     import argparse
     parser = argparse.ArgumentParser(description="起動前ヘルスチェック")
-    parser.add_argument("--channel", default="health", choices=["health"],
-                        help="チャンネルID (creatures は 5c-8 完了後に開放)")
+    parser.add_argument("--channel", default="health", choices=["health", "creatures"],
+                        help="チャンネルID")
     args = parser.parse_args()
 
     print(f"=== 起動前ヘルスチェック ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')}) ===")

@@ -252,8 +252,8 @@ def main():
     import sys as _sys
     parser = argparse.ArgumentParser(description="動画生成スキル")
     parser.add_argument("--run-dir", required=True, help="パイプラインの実行ディレクトリ")
-    parser.add_argument("--channel", default="health", choices=["health"],
-                        help="チャンネルID (creatures は 5c-8 完了後に開放)")
+    parser.add_argument("--channel", default="health", choices=["health", "creatures"],
+                        help="チャンネルID")
     args = parser.parse_args()
 
     # Step 3-δ.5c-2: channel config 読込 (fail-closed, generator.py と同形の二段 try).
