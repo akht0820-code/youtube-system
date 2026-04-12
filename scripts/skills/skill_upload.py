@@ -167,7 +167,7 @@ def run_upload(
         script = get_script_json(run_dir)
         youtube_title = metadata.get("youtube_title", script.get("youtube_title", script.get("title", "")))
         description = metadata.get("description", "")
-        tags = metadata.get("tags", ["ゆっくり解説", "健康"])
+        tags = metadata.get("tags", list(_cfg.tags.default))
         theme = script.get("title", youtube_title)
 
         # サムネイルパスの取得（thumbnail フェーズの出力から）
@@ -443,8 +443,8 @@ def main():
                         help="アップロードをスキップ")
     parser.add_argument("--skip-wait", action="store_true",
                         help="ボット判定回避の待機をスキップ")
-    parser.add_argument("--channel", default="health", choices=["health"],
-                        help="チャンネルID (creatures は 5c-8 完了後に開放)")
+    parser.add_argument("--channel", default="health", choices=["health", "creatures"],
+                        help="チャンネルID")
     args = parser.parse_args()
 
     # Step 3-δ.5c-4: channel config 読込 (fail-closed, generator.py と同形の二段 try).

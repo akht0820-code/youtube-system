@@ -136,8 +136,11 @@ def generate_description(theme: str, title: str, sections: list) -> str:
         return _build_fallback_description(theme, title, sections)
 
 
-def generate_tags(theme: str, title: str) -> list[str]:
+def generate_tags(theme: str, title: str,
+                  default_tags: list[str] | None = None) -> list[str]:
     """YouTubeタグを生成する"""
+    if default_tags is None:
+        default_tags = ["ゆっくり解説", "健康"]
     llm = get_llm()
     print("タグを生成しています...")
     prompt = build_tags_prompt(theme, title)
@@ -154,7 +157,7 @@ def generate_tags(theme: str, title: str) -> list[str]:
         return result if isinstance(result, list) else []
     except Exception as e:
         print(f"  → タグ生成失敗: {e}")
-        return ["ゆっくり解説", "健康", theme]
+        return list(default_tags) + [theme]
 
 
 def generate_thumbnail_caption(theme: str, title: str) -> str | None:
@@ -278,6 +281,18 @@ def run_metadata(
     logger = SkillLogger(run_dir, "metadata")
     update_phase(run_dir, "metadata", "in_progress")
 
+    # Step 3-δ.5c-8: channel config から default tags を取得.
+    # TODO(5c-9): generate_description / _build_fallback_description も channel-aware 化する.
+    # 現時点では health 固有のテンプレート（#健康, 医療免責）が残っている.
+    _manifest = load_manifest(run_dir)
+    _ch_id = _manifest.get("channel_id", "health")
+    try:
+        from _channel import load_channel
+        _ch_cfg = load_channel(_ch_id)
+    except Exception as _ce:
+        raise RuntimeError(f"channel config 読込失敗 (metadata, channel={_ch_id}): {_ce}") from _ce
+    _default_tags = list(_ch_cfg.tags.default)
+
     try:
         # 前提チェック
         if not check_prerequisites(run_dir, "metadata", ["script_gen"]):
@@ -302,13 +317,13 @@ def run_metadata(
         logger.log("【メタデータ生成】説明文・タグ・サムネイルキャプション・背景画像を並列生成しています...")
 
         description = theme
-        tags = ["ゆっくり解説", "健康"]
+        tags = list(_default_tags)
         thumbnail_caption = None
         bg_result = None
 
         with ThreadPoolExecutor(max_workers=4) as ex:
             fd = ex.submit(generate_description, theme, youtube_title, sections)
-            fg = ex.submit(generate_tags, theme, youtube_title)
+            fg = ex.submit(generate_tags, theme, youtube_title, _default_tags)
             fbg = ex.submit(generate_background, theme, bg_path, 1920, 1080)
             fcap = ex.submit(generate_thumbnail_caption, theme, youtube_title)
 
@@ -393,8 +408,8 @@ def main():
     import sys as _sys
     parser = argparse.ArgumentParser(description="メタデータ生成スキル")
     parser.add_argument("--run-dir", required=True, help="パイプラインの実行ディレクトリ")
-    parser.add_argument("--channel", default="health", choices=["health"],
-                        help="チャンネルID (creatures は 5c-8 完了後に開放)")
+    parser.add_argument("--channel", default="health", choices=["health", "creatures"],
+                        help="チャンネルID")
     args = parser.parse_args()
 
     # Step 3-δ.5c-3: channel config 読込 (fail-closed, generator.py と同形の二段 try).
