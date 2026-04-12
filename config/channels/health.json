@@ -12,6 +12,7 @@
   },
   "script": {
     "min_chars": 6000,
+    "hard_min_chars": 5200,
     "max_chars": 7500
   },
   "tags": {

@@ -32,6 +32,7 @@ class ChannelOAuth:
 @dataclass(frozen=True)
 class ChannelScript:
     min_chars: int
+    hard_min_chars: int
     max_chars: int
 
 
@@ -53,7 +54,7 @@ class ChannelConfig:
 _ROOT_REQUIRED = ("schema_version", "id", "paths", "oauth", "script", "tags")
 _PATHS_REQUIRED = ("output_subdir", "themes_file", "lock_file")
 _OAUTH_REQUIRED = ("credentials", "token")
-_SCRIPT_REQUIRED = ("min_chars", "max_chars")
+_SCRIPT_REQUIRED = ("min_chars", "hard_min_chars", "max_chars")
 _TAGS_REQUIRED = ("default",)
 
 
@@ -135,16 +136,25 @@ def _build_script(raw: Any) -> ChannelScript:
     d = _require_dict(raw, "script")
     _check_known_keys(d, _SCRIPT_REQUIRED, "script")
     min_chars = _require_int(d["min_chars"], "script.min_chars")
+    hard_min_chars = _require_int(d["hard_min_chars"], "script.hard_min_chars")
     max_chars = _require_int(d["max_chars"], "script.max_chars")
-    if min_chars <= 0:
-        raise ChannelSchemaError(f"script.min_chars: 正の int 必須 (got {min_chars})")
+    if hard_min_chars < 3000:
+        raise ChannelSchemaError(
+            f"script.hard_min_chars: 3000 以上必須 (got {hard_min_chars})"
+        )
+    if min_chars < 3000:
+        raise ChannelSchemaError(f"script.min_chars: 3000 以上必須 (got {min_chars})")
     if max_chars <= 0:
         raise ChannelSchemaError(f"script.max_chars: 正の int 必須 (got {max_chars})")
+    if hard_min_chars > min_chars:
+        raise ChannelSchemaError(
+            f"script: hard_min_chars ({hard_min_chars}) > min_chars ({min_chars})"
+        )
     if min_chars > max_chars:
         raise ChannelSchemaError(
             f"script: min_chars ({min_chars}) > max_chars ({max_chars})"
         )
-    return ChannelScript(min_chars=min_chars, max_chars=max_chars)
+    return ChannelScript(min_chars=min_chars, hard_min_chars=hard_min_chars, max_chars=max_chars)
 
 
 def _build_tags(raw: Any) -> ChannelTags:
