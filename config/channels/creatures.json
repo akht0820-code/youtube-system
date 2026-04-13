@@ -3,7 +3,7 @@
   "id": "creatures",
   "paths": {
     "output_subdir": "output_creatures",
-    "themes_file": "themes_creatures.txt",
+    "themes_file": "themes/creatures.txt",
     "lock_file": "logs/last_upload_date_creatures.txt"
   },
   "oauth": {

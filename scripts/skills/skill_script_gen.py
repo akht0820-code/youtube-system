@@ -74,12 +74,28 @@ def generate_title(theme: str) -> str:
     return title
 
 
-def generate_structure(theme: str) -> dict:
-    """テーマから動画構成を生成（ナラティブスタイルをランダム選択）"""
+def generate_structure(theme: str, channel_id: str = "health") -> dict:
+    """テーマから動画構成を生成。
+
+    channel_id="creatures" の場合は hybrid_selector でパターン選択し、
+    creatures 専用プロンプトで構成を生成する。
+    """
     llm = get_llm()
-    style = pick_narrative_style()
-    print(f"構成を考えています... [スタイル: {style['name']}]")
-    prompt = build_structure_prompt(theme, style)
+
+    if channel_id == "creatures":
+        from prompts.hybrid_selector import select_pattern, get_category_name
+        from prompts.creatures import build_structure_prompt as creatures_structure_prompt
+        pattern = select_pattern(theme)
+        opening = pattern["opening"]
+        ending = pattern["ending"]
+        category = pattern["category"]
+        print(f"構成を考えています... [冒頭:{opening} 結末:{ending} カテゴリ:{get_category_name(category)}]")
+        prompt = creatures_structure_prompt(theme, opening, ending)
+    else:
+        style = pick_narrative_style()
+        print(f"構成を考えています... [スタイル: {style['name']}]")
+        prompt = build_structure_prompt(theme, style)
+
     try:
         raw = call_with_retry(
             llm.generate, prompt, model_config.CREATIVE,
@@ -87,7 +103,12 @@ def generate_structure(theme: str) -> dict:
         )
         data = extract_json_safe(raw)
         structure = repair_structure(data, theme)
-        structure["_narrative_style"] = style["key"]   # 後工程で参照できるよう保持
+        if channel_id == "creatures":
+            structure["_opening_pattern"] = opening
+            structure["_ending_pattern"] = ending
+            structure["_category"] = category
+        else:
+            structure["_narrative_style"] = style["key"]
     except Exception as e:
         # 2026-04-09事故対策 (Codex Round4): 以前は _FALLBACK_STRUCTURE に差し替えて
         # 続行していたが、構成は公開物の骨格そのもので、壊れたまま generic 3章構成で
@@ -102,11 +123,16 @@ def generate_structure(theme: str) -> dict:
     return structure
 
 
-def generate_comedy_design(theme: str, structure: dict) -> dict | None:
+def generate_comedy_design(theme: str, structure: dict,
+                           channel_id: str = "health") -> dict | None:
     """テーマ・構成から笑いのネタを事前設計する（台本生成の前に呼ぶ）"""
     llm = get_llm()
     print("笑いのネタを設計しています...")
-    prompt = build_comedy_design_prompt(theme, structure)
+    if channel_id == "creatures":
+        from prompts.creatures import build_comedy_design_prompt as creatures_comedy_prompt
+        prompt = creatures_comedy_prompt(theme, structure)
+    else:
+        prompt = build_comedy_design_prompt(theme, structure)
     try:
         raw = call_with_retry(
             llm.generate, prompt, model_config.CREATIVE,
@@ -669,17 +695,23 @@ def generate_script(theme: str, structure: dict,
                     comedy_design: dict | None = None,
                     soft_min_chars: int = _MIN_SCRIPT_CHARS,
                     hard_min_chars: int = _HARD_MIN_SCRIPT_CHARS,
-                    max_chars: int = _MAX_SCRIPT_CHARS) -> dict:
+                    max_chars: int = _MAX_SCRIPT_CHARS,
+                    channel_id: str = "health") -> dict:
     """構成から台本を生成（文字数不足時は最大2回再生成）"""
     llm = get_llm()
     print("台本を生成しています...")
-    suggestions = load_suggestions()
-    if suggestions.get("suggestions"):
-        print(f"  → 改善提案 {len(suggestions['suggestions'])} 件を反映します")
-        base_prompt = build_script_prompt_with_suggestions(
-            theme, structure, suggestions, comedy_design=comedy_design)
+
+    if channel_id == "creatures":
+        from prompts.creatures import build_script_prompt as creatures_script_prompt
+        base_prompt = creatures_script_prompt(theme, structure, comedy_design=comedy_design)
     else:
-        base_prompt = build_script_prompt(theme, structure, comedy_design=comedy_design)
+        suggestions = load_suggestions()
+        if suggestions.get("suggestions"):
+            print(f"  → 改善提案 {len(suggestions['suggestions'])} 件を反映します")
+            base_prompt = build_script_prompt_with_suggestions(
+                theme, structure, suggestions, comedy_design=comedy_design)
+        else:
+            base_prompt = build_script_prompt(theme, structure, comedy_design=comedy_design)
 
     script = None
     prev_chars = 0
@@ -1019,7 +1051,7 @@ def run_script_gen(run_dir: str | Path, theme: str, external_script: dict | None
         structure = None
         with ThreadPoolExecutor(max_workers=2) as ex:
             ft = ex.submit(generate_title, theme)
-            fs = ex.submit(generate_structure, theme)
+            fs = ex.submit(generate_structure, theme, _ch_id)
 
             try:
                 youtube_title = ft.result()
@@ -1046,7 +1078,7 @@ def run_script_gen(run_dir: str | Path, theme: str, external_script: dict | None
         comedy_design = None
         if not external_script:
             try:
-                comedy_design = generate_comedy_design(theme, structure)
+                comedy_design = generate_comedy_design(theme, structure, _ch_id)
                 if comedy_design:
                     logger.log(f"笑いの設計完了: {sum(1 for k in comedy_design if comedy_design.get(k))}/6 種類")
             except Exception as e:
@@ -1065,7 +1097,7 @@ def run_script_gen(run_dir: str | Path, theme: str, external_script: dict | None
                 script, raw_sections = generate_script(
                     theme, structure, comedy_design=comedy_design,
                     soft_min_chars=_soft_min, hard_min_chars=_hard_min,
-                    max_chars=_max_chars)
+                    max_chars=_max_chars, channel_id=_ch_id)
             except (ConnectionError, OSError, TimeoutError) as e:
                 # ネットワーク障害は即失敗。フォールバック台本で続行しない。
                 # run.batの3回リトライで回復を試みる。

@@ -1,0 +1,35 @@
+{
+  "last_opening": "D",
+  "last_ending": "4",
+  "last_category": "A",
+  "history": [
+    {
+      "theme": "チーター",
+      "opening": "A",
+      "ending": "1",
+      "category": "D",
+      "date": "2026-04-13"
+    },
+    {
+      "theme": "カラス",
+      "opening": "B",
+      "ending": "2",
+      "category": "B",
+      "date": "2026-04-13"
+    },
+    {
+      "theme": "ウミガメ",
+      "opening": "C",
+      "ending": "3",
+      "category": "C",
+      "date": "2026-04-13"
+    },
+    {
+      "theme": "クマムシ",
+      "opening": "D",
+      "ending": "4",
+      "category": "A",
+      "date": "2026-04-13"
+    }
+  ]
+}

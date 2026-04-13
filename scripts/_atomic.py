@@ -36,6 +36,15 @@ def atomic_write_text(path: Path | str, data: str, encoding: str = "utf-8") -> N
                 # /mnt/c などで fsync 未サポートの場合は無視
                 pass
         os.replace(tmp_path, p)
+    except PermissionError:
+        # WSL2 /mnt/c で Windows 側プロセスがターゲットファイルを開いている場合
+        # os.replace が PermissionError になる。直接書き込みにフォールバック。
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        with open(p, "w", encoding=encoding, newline="") as f:
+            f.write(data)
     except Exception:
         try:
             os.unlink(tmp_path)
