@@ -292,6 +292,8 @@ def main():
         from skills._common import create_manifest
         # Step 3-δ.1: channel_id を pipeline.json に記録 (no-op; consumer は Step 3-δ.2)
         manifest = create_manifest(run_dir, theme, run_id, channel_id=args.channel)
+    global _current_run_dir
+    _current_run_dir = run_dir
     print(f"実行ディレクトリ: {run_dir}\n")
 
     _t0 = time.perf_counter()
@@ -578,5 +580,38 @@ def main():
                 print(f"URL       : {item}")
 
 
+_current_run_dir = None  # main()内で設定、未捕捉例外時にpipeline.json更新に使用
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as _uncaught:
+        # pipeline.json にエラーを記録（run_dir確定後のクラッシュの場合）
+        import traceback as _tb
+        _err_msg = f"{type(_uncaught).__name__}: {_uncaught}"
+        _err_detail = _tb.format_exc()
+        print(f"\n[致命的エラー] 未捕捉例外:\n{_err_detail}")
+        if _current_run_dir is not None:
+            try:
+                from skills._common import load_manifest as _lm, update_phase as _up, save_manifest as _sm
+                _m = _lm(_current_run_dir)
+                _updated = False
+                for _ph_name, _ph_data in _m.get("phases", {}).items():
+                    if _ph_data.get("status") == "in_progress":
+                        _up(_current_run_dir, _ph_name, "failed", error=_err_msg)
+                        _updated = True
+                        break
+                if not _updated:
+                    _m["status"] = "failed"
+                    _m["uncaught_error"] = _err_msg
+                    _sm(_current_run_dir, _m)
+            except Exception:
+                pass
+        try:
+            notify_error("パイプライン未捕捉例外", _uncaught)
+        except Exception:
+            pass
+        sys.exit(1)

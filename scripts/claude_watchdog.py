@@ -492,6 +492,49 @@ def _check_daily_task_health() -> tuple[str, str]:
     return "healthy", f"ok last={last_run_jst.strftime('%H:%M')}"
 
 
+def _scan_pipeline_errors() -> str | None:
+    """今日のoutput/から最新のpipeline.jsonを読み、エラー詳細を返す。
+    エラーが無ければ None。daily task 通知にエラー内容を付加するために使う。
+    """
+    output_dir = PROJECT_ROOT / "output"
+    if not output_dir.exists():
+        return None
+    today_str = datetime.now(JST).strftime("%Y%m%d")
+    try:
+        today_dirs = sorted(
+            [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith(today_str)],
+            key=lambda d: d.name,
+            reverse=True,
+        )
+    except OSError:
+        return None
+    if not today_dirs:
+        return None
+    # 最新の run_dir から pipeline.json を読む
+    latest = today_dirs[0]
+    pipeline = safe_read_json(latest / "pipeline.json")
+    if not pipeline or not isinstance(pipeline, dict):
+        return None
+    parts = []
+    # pipeline 全体のエラー
+    if pipeline.get("uncaught_error"):
+        parts.append(str(pipeline["uncaught_error"])[:200])
+    # 各フェーズのエラー
+    for ph_name, ph_data in pipeline.get("phases", {}).items():
+        if not isinstance(ph_data, dict):
+            continue
+        err = ph_data.get("error")
+        if err:
+            parts.append(f"{ph_name}: {str(err)[:150]}")
+        elif ph_data.get("status") == "in_progress":
+            # in_progress のまま放置 = クラッシュの可能性
+            started = ph_data.get("started_at", "")
+            parts.append(f"{ph_name}: in_progressのまま停止 (started={started})")
+    if not parts:
+        return None
+    return f" [{latest.name}] " + " / ".join(parts)
+
+
 # --- inbox backlog ---
 
 def _scan_inbox_backlog() -> tuple[int, list[str]]:
@@ -677,12 +720,19 @@ def main() -> int:
         should, reason, new_state = _should_notify("yukkuri_daily_task", True)
         _save_alert_state("yukkuri_daily_task", new_state)
         if should:
+            # pipeline.json からエラー詳細を取得
+            _pipe_err = ""
+            try:
+                _pipe_err = _scan_pipeline_errors() or ""
+            except Exception:
+                pass
             msg = (
                 f"[警告] 10時タスク YukkuriDaily に異常があります ({daily_diag})。"
-                f"Task Scheduler / run.bat / generator.py を確認してください。"
+                f"{_pipe_err}"
+                f" Task Scheduler / run.bat / generator.py を確認してください。"
             )
             _send_outbox_alert(msg)
-            _log(f"yukkuri_daily_task notified: {reason} {daily_diag}")
+            _log(f"yukkuri_daily_task notified: {reason} {daily_diag}{_pipe_err}")
     elif health == "healthy":
         should, reason, new_state = _should_notify("yukkuri_daily_task", False)
         _save_alert_state("yukkuri_daily_task", new_state)

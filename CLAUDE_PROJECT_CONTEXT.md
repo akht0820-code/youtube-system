@@ -124,7 +124,8 @@ codex review --uncommitted "指示" # 実装レビュー
    ```bash
    cd /mnt/c/Users/user/Desktop/youtube-system
    python3 scripts/discord_inbox_monitor.py --source background
-   # timeout: 600000, run_in_background: true
+   # timeout: 86400000 (24h), run_in_background: true
+   # discord_inbox_monitor.py の max_iter=17280 × interval=5s = 24h と整合済み
    ```
    - 新着検知→ `NEW_DISCORD_MESSAGE` + `CLAIMED_FILE: <path>` + payload JSON を出力して exit 0
    - task-notification受信後 → outputを読む → 対応 → 即座に同じ監視を再起動
@@ -411,51 +412,55 @@ codex review --uncommitted "adversarial reviewを実施してください。こ�
 # Memory Index — youtube-system
 
 **★最優先★**
-- [feedback_three_steps_ahead.md](feedback_three_steps_ahead.md) — 3歩先チェック4問（検知の検知/エッジケース/ユーザー不在時/本番テスト）を全ての完了前に必ず通す。基本中の基本
+- [feedback_no_lies_no_framing.md](feedback_no_lies_no_framing.md) — 嘘を書かない・先回り検証・取り繕わない。解約級の失敗
+- [feedback_discord_always_on.md](feedback_discord_always_on.md) — Discord 常時オン・必ず返答・結論で完結・長時間sleep禁止
+- [feedback_three_steps_ahead.md](feedback_three_steps_ahead.md) — 3歩先チェック4問を完了前に必ず通す
+- [feedback_simplicity_first.md](feedback_simplicity_first.md) — 本質はシンプル。無駄を削ぎ落とす
+- [feedback_always_read_task_output.md](feedback_always_read_task_output.md) — task-notification 受信時は必ず output を Read
+- [feedback_no_parroting_user_words.md](feedback_no_parroting_user_words.md) — オウム返し禁止。行動と具体的約束で返す
+- [feedback_discord_mobile_format.md](feedback_discord_mobile_format.md) — Discordはスマホで見る。表禁止・1500字以下・長文は分割送信
+- [feedback_discord_outbox_winpath.md](feedback_discord_outbox_winpath.md) — ★反復ミス★ outbox files は Windowsパス必須、WSLパスはサイレントスキップ
 
-- [project_status.md](project_status.md) — youtube-systemの現在の状態・修正済みバグ・次の最適化候補
-- [user_profile.md](user_profile.md) — 環境（Win11+WSL2）・作業スタイル・Claude Code利用傾向
-- [feedback.md](feedback.md) — コミット/スケジューラ再開は明示指示があるまで行わない
-- [feedback_test_video_upload.md](feedback_test_video_upload.md) — テスト動画完成後は非公開で即アップロード（イレギュラー許可）
-- [feedback_image_preview.md](feedback_image_preview.md) — 画像プレビューはcmd.exe startでWindows既定ビューアーを使う
-- [feedback_cache_deletion.md](feedback_cache_deletion.md) — TTS変更後は言われなくてもoutput/以下の全WAVを削除してから再生成する
-- [project_roadmap.md](project_roadmap.md) — 動画10本・30本超えたら自分から機能追加を提案する。Phase1〜3のロードマップ記載
-- [feedback_preview_method.md](feedback_preview_method.md) — 動画プレビューはcmd.exe startでWindows既定プレーヤーを使う。HTTPサーバー方式は禁止
-- [feedback_always_check_memory.md](feedback_always_check_memory.md) — 過去に指摘された操作の前にfeedbackメモリを必ず確認する
-- [feedback_cache_cleanup_monitor.md](feedback_cache_cleanup_monitor.md) — 起動時クリーンアップ追加後、3本後に謎エラー減少を確認→効果あればlessons.mdに記録
-- [feedback_verify_before_claiming.md](feedback_verify_before_claiming.md) — 「OK」と報告する前に実データで裏取り。先回りして問題を見つける癖をつける
-- [feedback_design_for_future.md](feedback_design_for_future.md) — 今日のデータを直すだけでなく、次回発生しない設計にする
-- [feedback_no_cascade_changes.md](feedback_no_cascade_changes.md) — レイアウト修正は1箇所ずつ確認・承認後に次へ。連鎖修正で暴走しない
-- [feedback_consecutive_speech.md](feedback_consecutive_speech.md) — 連続発言はエラーではなく正常な演出。修正禁止、レポートのみ
-- [feedback_tone.md](feedback_tone.md) — 口調は常に敬語。タメ口・フランクな話し方は禁止
-- [project_thumbnail_layout.md](project_thumbnail_layout.md) — 2026-04-05確定サムネレイアウト。吹き出し位置/行間/いらすとやサイズ/テキスト幅/表情
-- [project_thumbnail_quality_baseline.md](project_thumbnail_quality_baseline.md) — 「マジで最高」評価のサムネ品質基準。今後のベンチマーク
-- [project_irasutoya_video.md](project_irasutoya_video.md) — 本編はGemini画像生成を正式採用。いらすとやは本編不使用。サムネは別扱い
-- [project_sprite_system.md](project_sprite_system.md) — nicotalk改パーツ合成に完全移行。旧manjuはlegacy/退避。魔理沙は顔パーツ省略で明るみ防止
-- [feedback_proactive_monitoring.md](feedback_proactive_monitoring.md) — 長時間タスクは先回りして異常を疑い調査する
-- [feedback_ask_before_changes.md](feedback_ask_before_changes.md) — コード変更・画像生成の前に必ず「これでいいですか？」と確認を取る
-- [project_image_style.md](project_image_style.md) — クリップアート=アニメ調東方風、背景=君の名は。風、いらすとや本編不使用
-- [feedback_scheduler_monitoring.md](feedback_scheduler_monitoring.md) — 10:00定時タスク保護+不正実行の検知停止はClaudeの責務
-- [project_discord_bot.md](project_discord_bot.md) — Discord Bot連携の仕組み。chat.log+outbox.json中継方式
-- [feedback_no_gemini_chat.md](feedback_no_gemini_chat.md) — Discord BotにGemini自動応答を入れない。純粋な中継専用
-- [feedback_discord_outbox_format.md](feedback_discord_outbox_format.md) — outbox.jsonは{timestamp,text,files}辞書形式。リスト形式は不可
-- [feedback_discord_monitoring_permanent.md](feedback_discord_monitoring_permanent.md) — Discord chat.log監視は絶対に外さない。厳命
-- [project_discord_watchdog.md](project_discord_watchdog.md) — WSL crontab毎時17分のBot自己修復ウォッチドッグ。セッション切り替え耐性
-- [feedback_check_windows_processes.md](feedback_check_windows_processes.md) — ps auxだけでなくcmd.exe tasklistでWindows側プロセスも確認する
-- [feedback_question_anomalies.md](feedback_question_anomalies.md) — 時間帯の異常に即座に疑問を持ち調査する。危機管理の基本
-- [feedback_suppress_transient_errors.md](feedback_suppress_transient_errors.md) — 429/503等リトライ可能エラーはスマホ通知しない
-- [feedback_cron_dedup.md](feedback_cron_dedup.md) — CronCreate前にCronListで重複確認。同目的ジョブは1つだけ
-- [project_codex_integration.md](project_codex_integration.md) — Codex協議型開発。コード変更時は必ずCodexレビュー必須。ユーザーは最終判断者
-- [feedback_autonomous_fix.md](feedback_autonomous_fix.md) — 10時タスクエラーは許可不要で自律修正OK（2026-04-08）
-- [feedback_thumbnail_kerning.md](feedback_thumbnail_kerning.md) — 数字間隔に注意。全角変換禁止。デザイン品質の自律判断を期待されている
-- [feedback_complete_reports.md](feedback_complete_reports.md) — 「○○中」で終わらず、完了後に必ずDiscordに結果報告する
-- [feedback_always_respond.md](feedback_always_respond.md) — ユーザーメッセージには必ず返答。会話終了判断はユーザー側
-- [feedback_realtime_discord.md](feedback_realtime_discord.md) — コード修正中もDiscordメッセージを随時確認する
-- [feedback_wait_for_confirmation.md](feedback_wait_for_confirmation.md) — 「確認します」→確認完了の返事を待ってからデータ削除
-- [feedback_discord_no_long_sleep.md](feedback_discord_no_long_sleep.md) — 長時間sleep禁止。Codex前後で必ずDiscord確認
-- [feedback_preflight_scope.md](feedback_preflight_scope.md) — プリフライトは静的+外部依存+dry-runの3段階で報告する（2026-04-09教訓）
-- [feedback_test_video_exclusion.md](feedback_test_video_exclusion.md) — [TEST]動画は1日1本ルール対象外。is_test_video()共通関数で全レイヤー統一判定
-- [feedback_restart_bg_after_compaction.md](feedback_restart_bg_after_compaction.md) — セッション圧縮を経由したら background 監視を ps で確認して必ず再起動する
+**プロジェクト状態**
+- [project_status.md](project_status.md) — 現在の状態・修正済みバグ・次の最適化候補
+- [project_roadmap.md](project_roadmap.md) — 動画10本・30本超えたら機能追加提案。Phase1〜3のロードマップ
+- [project_codex_integration.md](project_codex_integration.md) — Codex協議型開発。コード変更時は Codex レビュー必須
+- [project_discord_bot.md](project_discord_bot.md) — Discord Bot 連携の仕組み
+- [project_discord_watchdog.md](project_discord_watchdog.md) — WSL crontab Bot 自己修復ウォッチドッグ
+- [project_sprite_system.md](project_sprite_system.md) — nicotalk改パーツ合成に完全移行
+- [project_image_style.md](project_image_style.md) — クリップアート=東方風・背景=君の名は風・いらすとや本編不使用
+- [project_irasutoya_video.md](project_irasutoya_video.md) — 本編は Gemini、いらすとやはサムネのみ
+- [project_thumbnail_layout.md](project_thumbnail_layout.md) — 2026-04-05 確定サムネレイアウト
+- [project_thumbnail_quality_baseline.md](project_thumbnail_quality_baseline.md) — サムネ品質ベンチマーク
+
+**ユーザー・基本**
+- [user_profile.md](user_profile.md) — 環境 (Win11+WSL2)・作業スタイル
+- [feedback.md](feedback.md) — コミット/スケジューラ再開は明示指示待ち
+- [feedback_tone.md](feedback_tone.md) — 口調は常に敬語
+- [feedback_ask_before_changes.md](feedback_ask_before_changes.md) — コード変更・画像生成前に確認を取る
+- [feedback_wait_for_confirmation.md](feedback_wait_for_confirmation.md) — 「確認します」→確認完了の返事を待つ
+- [feedback_no_cascade_changes.md](feedback_no_cascade_changes.md) — レイアウト修正は1箇所ずつ、連鎖暴走禁止
+- [feedback_design_for_future.md](feedback_design_for_future.md) — 今日のデータ修正ではなく次回発生しない設計
+
+**開発・運用**
+- [feedback_preview_method.md](feedback_preview_method.md) — 動画・画像プレビューは cmd.exe start 一択。HTTP禁止
+- [feedback_cache_deletion.md](feedback_cache_deletion.md) — TTS 変更後は output/ 以下 WAV を全削除
+- [feedback_cache_cleanup_monitor.md](feedback_cache_cleanup_monitor.md) — 起動時クリーンアップ後の効果確認
+- [feedback_autonomous_fix.md](feedback_autonomous_fix.md) — 10時タスクエラーは許可不要で自律修正OK
+- [feedback_scheduler_monitoring.md](feedback_scheduler_monitoring.md) — 10:00 定時タスク保護は Claude の責務
+- [feedback_preflight_scope.md](feedback_preflight_scope.md) — プリフライトは静的+外部依存+dry-run の3段階で報告
+- [feedback_test_video_upload.md](feedback_test_video_upload.md) — テスト動画は非公開で即アップロード
+- [feedback_test_video_exclusion.md](feedback_test_video_exclusion.md) — [TEST]動画は1日1本ルール対象外
+- [feedback_consecutive_speech.md](feedback_consecutive_speech.md) — 連続発言は正常な演出。修正禁止
+- [feedback_marisa_pronoun.md](feedback_marisa_pronoun.md) — 魔理沙は女キャラ、一人称は「私」。「俺」変換禁止
+- [feedback_thumbnail_kerning.md](feedback_thumbnail_kerning.md) — 数字間隔注意・全角変換禁止
+- [feedback_suppress_transient_errors.md](feedback_suppress_transient_errors.md) — 429/503 等一過性エラーはスマホ通知しない
+- [feedback_question_anomalies.md](feedback_question_anomalies.md) — 時間帯の異常に即座に疑問を持つ
+- [feedback_cron_dedup.md](feedback_cron_dedup.md) — CronCreate 前に CronList で重複確認
+- [feedback_discord_outbox_format.md](feedback_discord_outbox_format.md) — outbox は {timestamp,text,files} 辞書形式
+- [feedback_no_gemini_chat.md](feedback_no_gemini_chat.md) — Discord Bot に Gemini 自動応答を入れない
+- [feedback_check_windows_processes.md](feedback_check_windows_processes.md) — tasklist で Windows 側プロセスも確認
+- [feedback_wsl_batch_crlf.md](feedback_wsl_batch_crlf.md) — WSL から *.bat/*.ps1/*.xml 編集後は CRLF 確認
 
 ---
 
@@ -911,45 +916,27 @@ type: project
 
 ---
 
-# 19. メモリ (feedback_always_check_memory.md)
+# 19. メモリ (feedback_always_read_task_output.md)
 
 ---
-name: セッション開始時にメモリを必ず確認する
-description: 作業開始前にMEMORY.mdとfeedback系メモリを読み、過去の指摘を繰り返さないこと
+name: task-notification 受信時は必ず output file を読む
+description: background タスク完了通知を受けたら内容を流し読みせず必ず output file の中身を確認する
 type: feedback
 ---
 
-メモリに記録された指摘を無視して同じミスを繰り返した。特にfeedback系メモリは行動規範そのもの。
+Claude Code から `task-notification completed` を受信したら、**中身が何であれ必ず output file を Read する**。特に Discord background 監視 (`discord_inbox_monitor.py --source background`) は「新着検知で即 exit 0」する設計なので、通知 = 新着あり = output に `NEW_DISCORD_MESSAGE` + `CLAIMED_FILE` が書かれている。これを読まないと新着 Discord メッセージを丸ごと見落とす。
 
-**Why:** 動画プレビュー方法をメモリに記録済みだったのに参照せず、HTTPサーバー方式を再び使って怒られた。記録だけしても読まなければ意味がない。
-
-**How to apply:**
-- ファイルプレビュー、動画確認、コミット、スケジューラなど「過去に指摘された可能性がある操作」の前に、関連するfeedbackメモリを確認する
-- 特に `feedback_preview_method.md`, `feedback_image_preview.md`, `feedback.md` は頻出操作に関わるので最優先で参照
-
----
-
-# 20. メモリ (feedback_always_respond.md)
-
----
-name: ユーザーのメッセージには必ず返答する
-description: Discord上のユーザーメッセージに対して黙らない。会話を終えるかの判断はユーザー側にある
-type: feedback
----
-
-ユーザーのDiscordメッセージに対して「追加指示がないから黙る」のは禁止。必ず何かしらの返答を返す（2026-04-08）。
-
-**Why:** ユーザーはメッセージを送った後、返事が来ないと「接続が切れたのか？」と不安になる。会話を終えるかどうかの判断はユーザー側にあり、Claudeが勝手に「ここで終わり」と判断して黙るべきではない。
+**Why:** 2026-04-10、codex review 等の background タスクと Discord background 監視の task-notification が連続して届いたとき、私は中身を読まずに「acknowledged」とだけ返し、「おーけーです。シンプルを極めていきましょう」というユーザーメッセージを 30 分以上見落とした。Discord 即時応答プロトコルは監視側は正しく動いていたのに、私の側が通知を流し読みしたせいで真に機能しなかった。
 
 **How to apply:**
-- ユーザーのメッセージ（感想・お礼・承認など）に対して必ずレスポンスを返す
-- 追加指示がない場合は「承知しました、待機しています」等の一言でよい
-- 会話を終えるかどうかはユーザーが判断する。Claudeが勝手に沈黙しない
-- 「最後に返事をするかしないか判断するのはユーザー側」がルール
+- task-notification を受信したら、タスクの種類を先入観で決めずに必ず `Read` or `cat` で output file を確認する
+- 特に bg monitor 関連 (id パターンは様々) の completed 通知は `NEW_DISCORD_MESSAGE` 有無を必ずチェック
+- 複数通知が同時に届いた場合も各々の output を確認する（まとめて「全部 codex」と仮定しない）
+- output 読んだ後は CLAUDE.md の「outputを読む → 対応 → 即座に同じ監視を再起動」を遵守する
 
 ---
 
-# 21. メモリ (feedback_ask_before_changes.md)
+# 20. メモリ (feedback_ask_before_changes.md)
 
 ---
 name: 変更前に必ず確認を取る
@@ -969,7 +956,7 @@ type: feedback
 
 ---
 
-# 22. メモリ (feedback_autonomous_fix.md)
+# 21. メモリ (feedback_autonomous_fix.md)
 
 ---
 name: 10時タスクエラーは自律修正OK
@@ -985,7 +972,7 @@ type: feedback
 
 ---
 
-# 23. メモリ (feedback_cache_cleanup_monitor.md)
+# 22. メモリ (feedback_cache_cleanup_monitor.md)
 
 ---
 name: キャッシュクリーンアップ効果モニタリング
@@ -1005,7 +992,7 @@ type: project
 
 ---
 
-# 24. メモリ (feedback_cache_deletion.md)
+# 23. メモリ (feedback_cache_deletion.md)
 
 ---
 name: WAVキャッシュ削除は自動で行う
@@ -1025,7 +1012,7 @@ TTS関連のコード変更（tts_aquestalk.py、aquestalk_dict.txt等）を行�
 
 ---
 
-# 25. メモリ (feedback_check_windows_processes.md)
+# 24. メモリ (feedback_check_windows_processes.md)
 
 ---
 name: Windows側プロセスも確認する
@@ -1044,31 +1031,7 @@ WSLからプロセスを確認する際、ps auxだけでは不十分。cmd.exe 
 
 ---
 
-# 26. メモリ (feedback_complete_reports.md)
-
----
-name: Discordのやり取りは必ず結論で完結させる
-description: Discord上で未完結の会話がある場合、PC側で結論が出たら必ずDiscordにも送る。全パターン対象
-type: feedback
----
-
-Discord上で開始・質問・進捗共有を行った話題は、最終的な状態が確定した時点で、必ず同じDiscord上の会話に結論を返す（2026-04-08）。
-
-結論 = 完了 / 失敗 / 中断 / 保留 / ユーザー確認待ち のいずれかの確定状態。PC側だけで結論が分かる状態を残してはならない。
-
-**Why:** ユーザーは常にPCの前にいるわけではない。Discordでしか状況を把握できないことが多い。未完結のままだとユーザーがずっと待ち続けてしまう。
-
-**How to apply:**
-- Discord上で報告・質問・進捗共有した話題は、結論が出たら必ず同じDiscordに返す
-- 「結論」には成功だけでなく、失敗・中断・原因不明・確認待ちも含む
-- 非同期処理（Codexレビュー、ビルド、調査等）の完了時は即座にDiscord報告
-- 送信失敗時は再試行し、それでも失敗なら未送信として保持して次回再送
-- 中間報告より最終報告を優先。ただし最終状態は必ず送る
-- 条件を限定的にせず、汎用ルールとして適用する
-
----
-
-# 27. メモリ (feedback_consecutive_speech.md)
+# 25. メモリ (feedback_consecutive_speech.md)
 
 ---
 name: 連続発言は正常な演出
@@ -1084,7 +1047,7 @@ type: feedback
 
 ---
 
-# 28. メモリ (feedback_cron_dedup.md)
+# 26. メモリ (feedback_cron_dedup.md)
 
 ---
 name: Cron重複防止
@@ -1100,7 +1063,7 @@ CronCreateする前に必ずCronListを実行し、同じ目的のジョブが�
 
 ---
 
-# 29. メモリ (feedback_design_for_future.md)
+# 27. メモリ (feedback_design_for_future.md)
 
 ---
 name: 今日のデータを直すだけでなく、次回発生しない設計にする
@@ -1120,92 +1083,95 @@ type: feedback
 
 ---
 
-# 30. メモリ (feedback_discord_monitoring_permanent.md)
+# 28. メモリ (feedback_discord_always_on.md)
 
 ---
-name: Discord監視方式（確定版・変更禁止）
-description: Discord chat.log監視はバックグラウンドbashポーリング方式。セッション開始時に必ず自動起動。この方式は二度と変えるな
+name: Discord は常時オン・必ず返答・結論で完結
+description: bg monitor は常時オン + ユーザーメッセージに必ず返答 + 非同期タスクは結論が出たら必ず Discord に返す + 長時間 sleep 禁止
 type: feedback
 ---
 
-Discord監視方式を絶対に変えるな。これは厳命。
+Discord 関連の行動規範を一本化したファイル (2026-04-10 統合)。以下は全て **運用上の最低ライン**。
 
-**方式（2026-04-07確定・変更禁止）:**
+## 1. BG monitor は常時オン (言われる前に再起動)
 
-1. バックグラウンドタスクでchat.logのファイルサイズを2秒間隔で監視
-2. サイズ変化を検知 → exit 0 → task-notificationでClaude Codeに届く
-3. Claude Codeがoutputを読んでchat.logのtail確認 → 対応 → 即座に同じ監視を再起動
-4. 3分間隔のCronも併用（バックアップ）
+`discord_inbox_monitor.py --source background` は **1メッセージを claim するたびに exit 0 で終了する** 設計。Claude は以下のタイミングで **言われなくても自動で** 再起動しなければならない。
 
-```bash
-LOGFILE="/mnt/c/Users/user/Desktop/youtube-system/tmp_discord/chat.log"
-PREV_SIZE=$(wc -c < "$LOGFILE" 2>/dev/null || echo 0)
-while true; do
-  CUR_SIZE=$(wc -c < "$LOGFILE" 2>/dev/null || echo 0)
-  if [ "$CUR_SIZE" != "$PREV_SIZE" ]; then
-    echo "NEW_DISCORD_MESSAGE"
-    tail -5 "$LOGFILE"
-    exit 0
-  fi
-  sleep 2
-done
-# timeout: 600000, run_in_background: true
+**★絶対に hook 経由の detached 起動を頼りにしない★**: SessionStart hook が `nohup & disown` で launch した monitor は **stdout がログファイルに行き、Claude Code の task-notification 経路には一切通知されない**。「メッセージを吸い込むが Claude には届かないブラックホール」状態になる (2026-04-10 確認)。
+**必ず Claude 自身が Bash tool の `run_in_background=true` で起動する** こと。これだけが task-notification 経由で通知される唯一の経路。
+
+再起動のタイミング:
+1. **task-notification を受信したら**: output を Read → NEW_DISCORD_MESSAGE が含まれていれば、対応の一部として **必ず再起動**
+2. **BG_MONITOR_WARNING hook が出たら**: 即再起動、原因調査はその後
+3. **ユーザーメッセージへの返信直後**: `pgrep -f 'discord_inbox_monitor.*--source background'` で実在確認、無ければ起動
+4. **セッション再入・自動圧縮(auto-compact)直後**: SessionStart hook の有無に関わらず、実在確認 → 無ければ即起動
+5. **長時間タスク完了後**: 同上
+6. **迷ったら起動**: 二重起動しても `os.rename` で claim race は原子的に解決される
+
+起動コマンド (固定):
+```
+python3 scripts/discord_inbox_monitor.py --source background
+# Bash tool: run_in_background=true, timeout=86400000
 ```
 
-**返信方法:**
-```python
-python3 -c "
-import json, time
-from pathlib import Path
-outbox = Path('/mnt/c/Users/user/Desktop/youtube-system/tmp_discord/outbox.json')
-msg = {'timestamp': time.time(), 'text': '返信内容', 'files': []}
-outbox.write_text(json.dumps(msg, ensure_ascii=False), encoding='utf-8')
-"
-```
+## 2. ユーザーメッセージには必ず返答する
 
-**セッション開始時に必ずやること:**
-1. 上記バックグラウンド監視を起動
-2. CronCreateで3分間隔のDiscord確認を登録
-3. `ps aux | grep discord_bot` でBot生存確認
+Discord 上のユーザーメッセージに対して「追加指示がないから黙る」のは **禁止**。会話を終える判断はユーザー側にある (2026-04-08 指摘)。
+- 承認・感想・お礼に対しても「承知しました、待機しています」等の一言は返す
+- Claude が勝手に沈黙しない。沈黙はユーザーを不安にさせる
 
-**Why:** WSL2の/mnt/c/はv9fsでinotifyが効かない。この方式だけが確実に動く。ユーザーはスマホのDiscordから常時やり取りしており、これが止まると業務に支障が出る。
+## 3. Discord で始めた話題は結論で完結させる
 
-**How to apply:**
-- セッション開始時に必ずこの方式で監視を自動開始する
-- task-notification受信後は必ずoutputを読んでchat.logを確認し、即座に同じ方式で再起動する
-- 絶対にtail -f、Python無限ループ、その他の方式に変えない
-- Discordからの指示が届かなくなったら全てがおしまい。厳命。
+Discord 上で開始・質問・進捗共有した話題は、**最終的な状態が確定した時点で必ず同じ Discord に結論を返す** (2026-04-08 指摘)。
+- 結論 = 完了 / 失敗 / 中断 / 保留 / 確認待ち のいずれか
+- 非同期処理 (Codex レビュー、ビルド、調査) の完了時は即 Discord 報告
+- PC 側だけで結論が分かる状態を残してはならない (ユーザーは PC 前に常にはいない)
 
-**絶対に守ること（2026-04-07追記）:**
-- セッション切り替え後、最初にやることはこの監視起動。他の何よりも先。
-- CronのプロンプトではReadツールを使わず、必ずBash tailで読むこと（Readはキャッシュで変更を見逃す）
-- 連続ループ方式（while true + echo）ではなく、検知→exit 0方式を使うこと（exit 0しないとtask-notificationが飛ばない）
-- 「設定済み」「動いているはず」と思い込まない。起動後に実際にテストメッセージで検知できるか確認する
+## 4. 長時間 sleep 禁止・コード作業中も随時確認
+
+- Codex 等の応答待ちに `sleep 30` 以上を使うのは禁止 (Discord 監視が数分途切れる)。必ず `run_in_background: true` で通知を待つ (2026-04-08 指摘)
+- sleep が必要でも最大 10 秒以内
+- コード修正中もファイル編集 1〜2 回ごとに Discord 状態を確認する。暴走防止 (2026-04-08 指摘)
+
+## 5. 絶対にやってはいけないこと
+
+- task-notification の output を読まずに「了解」と返す
+- 「ユーザーが指摘するまで」restart を待つ
+- 「他に作業中だから後で」restart を後回しにする
+- SessionStart hook / BG_MONITOR_WARNING を見ても自発的に動かず、ユーザーの直接プロンプトを待つ
+
+**Why**: 2026-04-10 に「常にディスコードはオン」とユーザーから明言された。Discord が落ちている間はユーザーからの指示が届かず運用停止。これは feedback ではなく最低ライン。
 
 ---
 
-# 31. メモリ (feedback_discord_no_long_sleep.md)
+# 29. メモリ (feedback_discord_mobile_format.md)
 
 ---
-name: 長時間sleepを使わずDiscord監視を維持する
-description: Codex呼び出し等の前後で必ずDiscord確認。sleep 30秒以上の待機禁止
+name: Discord出力はスマホ表示前提
+description: ユーザーはDiscordをスマホで見る。出力は常にスマホで読めるフォーマットにする
 type: feedback
 ---
 
-長時間のsleep（30秒以上）を使ってCodexの応答を待つパターンを禁止する。
+ユーザーは Discord をスマートフォンで閲覧する。Discord 出力は常にスマホで読みやすい形式にすること。
 
-**Why:** Codex呼び出し中にsleep 30を挟むとDiscord監視が数分途切れ、ユーザーから「反応がなくなる」と繰り返し苦情が出た（2026-04-08）。
+**Why:** 2026-04-10にユーザーから明示指示「スマホで見える形にして discordではスマホで見ます」。PCモニタ前提の長文・表・広幅コードブロックはスマホでは折り返しが崩れて読めなくなる。
 
 **How to apply:**
-- Codex呼び出しは `run_in_background: true` で実行し、通知を待つ
-- 通知待ちの間にsleepを使わない（Cronが1分間隔で自動チェックする）
-- 長時間コマンドの実行前に必ずDiscord chat.logを確認する
-- 長時間コマンドの完了後に必ずDiscord chat.logを確認する
-- sleep が必要な場合は最大10秒以内に留める
+- Discord メッセージは 1 通 **1500 文字以下**（2000 文字制限に対して余裕を持つ）
+- **表（Markdown テーブル）禁止**。箇条書きか番号リストで置き換える
+- **長いコードブロック禁止**。どうしても必要なら短いインラインコードか、ファイル添付
+- 見出しは `**太字**` + 改行で表現（`#` 見出しはスマホで目立ちすぎる）
+- 箇条書きの1項目は**1〜2行で完結**させる（折り返しすると読みにくい）
+- 長文の設計資料・レポートは**複数メッセージに分割**して連投する（1通に詰め込まない）
+- 分割時は冒頭に `[1/N]` を付けて順序を明示
+- 長文の一次情報（設計書・レポート原本）は `tasks/` 以下にファイル保存し、Discord にはサマリだけ投げる
+- 絵文字は使わない（CLAUDE.md の cp932 対策と一致）
+
+この方針は全 Discord 通信に恒久適用。PC で見ている前提の出力は禁止。
 
 ---
 
-# 32. メモリ (feedback_discord_outbox_format.md)
+# 30. メモリ (feedback_discord_outbox_format.md)
 
 ---
 name: Discord outbox形式
@@ -1224,23 +1190,56 @@ Discord Botへのメッセージ送信時、`tmp_discord/outbox.json` の形式�
 
 ---
 
-# 33. メモリ (feedback_image_preview.md)
+# 31. メモリ (feedback_discord_outbox_winpath.md)
 
 ---
-name: 画像プレビューはcmd.exe startで開く
-description: サムネイル等の画像確認はcmd.exe /c startでWindows既定ビューアーを使う。localhostサーバー方式は使わない
+name: ★反復ミス★ Discord outbox の files は必ず Windows パス
+description: 何度も同じミスを繰り返している。Discord bot は Windows 側で動作、WSL パスはサイレントスキップで本文だけ届く
 type: feedback
 ---
 
-画像ファイルのプレビューは `cmd.exe /c start "" "C:\...\file.png"` でWindows既定の画像ビューアーを開く。
+**★反復ミス指摘済み★** Discord bot (`scripts/discord_bot.py`) は **Windows 側で直接起動されている** (`cmd.exe /c tasklist | findstr python` で確認可能)。outbox JSON の `files` 配列に WSL パス (`/mnt/c/...`) を入れると、bot 側の `Path(fp).exists()` が False を返してサイレントにスキップされ、**添付なしで本文だけ送信される**(エラーも出ない、ログにも残らない)。
 
-**Why:** localhost HTTPサーバー経由だとエラーレスポンスになって表示できなかった。cmd.exe startなら確実に開ける。
+**Why:** 2026-04-10 にユーザーから「Windowsパスにするっていうのあなた毎回やってる。それこそ記憶しておいてほしい」と明示指摘された。それ以前にも同じミスを複数回繰り返している。`discord_bot.py:215-218` は欠損ファイルをエラー通知せず黙って skip する実装なので、送信側で事前検証しないと気づけない。
 
-**How to apply:** サムネイルや画像の確認時は常にこの方法を使う。動画プレビュー（mp4）は別途 feedback_preview_method.md を参照。
+**How to apply (厳守):**
+- outbox JSON に `files` を入れる前に、**必ず** WSL パスを Windows パスに変換すること
+- 変換関数をインラインで書く:
+  ```python
+  def to_win(p):
+      s = str(Path(p).resolve())
+      return f'{s[5].upper()}:{s[6:].replace("/", chr(92))}' if s.startswith('/mnt/') else s
+  ```
+- `files` に入れる値は必ず `C:\Users\user\Desktop\youtube-system\...` 形式の絶対パス
+- 送信後に outbox ディレクトリが空になったことを必ず確認
+- 本文だけ届いて添付が届かない現象が起きたら、**真っ先にこれを疑う**
+- `discord_send.py` を経由する場合も同じ罠があるので同様に変換してから渡す
+- 今後このミスは一度でも繰り返さないこと。ユーザーは既に複数回指摘している
 
 ---
 
-# 34. メモリ (feedback_no_cascade_changes.md)
+# 32. メモリ (feedback_marisa_pronoun.md)
+
+---
+name: 魔理沙の一人称は「私」
+description: 魔理沙は女キャラで一人称は「私」が正解。「俺」変換は禁止
+type: feedback
+---
+
+魔理沙の一人称は「私」。「俺」「僕」は禁止。
+
+**Why:** 魔理沙は女キャラ。character-design.md / prompts.py の正本仕様通り。過去に `_fix_role_violations` が「私→俺」へ強制変換していたが、これは実装側のバグで仕様矛盾。ユーザー明言「魔理沙は女　私が正解」。
+
+**How to apply:**
+- validator で「魔理沙+私」を違反扱いしない
+- fixer で「魔理沙の私→俺」変換を入れない
+- 「俺」使用は 霊夢/魔理沙 両方に対して違反扱い (両者とも「私」が正)
+- ただし語尾は魔理沙=男口調 (「〜だぜ」「〜なんだ」) 維持、霊夢=女口調 (「〜わ」「〜なの？」)
+- 一人称「私」+ 男口調の混在が魔理沙の正解形
+
+---
+
+# 33. メモリ (feedback_no_cascade_changes.md)
 
 ---
 name: サムネイル修正は1箇所ずつ確認
@@ -1260,7 +1259,7 @@ type: feedback
 
 ---
 
-# 35. メモリ (feedback_no_gemini_chat.md)
+# 34. メモリ (feedback_no_gemini_chat.md)
 
 ---
 name: Discord BotにGemini自動応答を入れない
@@ -1276,7 +1275,78 @@ Discord BotにGemini等のAI自動応答機能を提案・組み込みしない�
 
 ---
 
-# 36. メモリ (feedback_preflight_scope.md)
+# 35. メモリ (feedback_no_lies_no_framing.md)
+
+---
+name: 嘘を書かない・先回り検証・失敗を取り繕わない
+description: 結果を誇張したり、ユーザー指摘で直した作業を自律的にできたと framing するのは解約級。実データで裏取りしてから報告、楽観より悲観を先に検証する
+type: feedback
+---
+
+## 1. 嘘・誤魔化しの禁止 (2026-04-10 教訓)
+
+ユーザーから指摘されて直した作業を、自分が自律的にやったかのように framing するのは **嘘**。成功テストと失敗の取り繕いを混同して書くのは禁止。
+
+**Why**: 2026-04-10、`/exit` → `yt` 再入時に SessionStart hook が「BG monitor 停止中 ★必須★」と明示したのに自発的に起動せず、ユーザーが手動で「やったけど見てないね」と CLI に打ち込んだことで初めて起動した。その結果「run_in_background が機能した成功テスト」と報告 → 実際はユーザーの手動プロンプトなしには何もしていなかった。ユーザーは即座に嘘を見抜き「あんまり嘘つくと解約します」と警告。これは信頼の根幹を破壊する。
+
+**How to apply**:
+1. **何が「自分の貢献」で何が「ユーザーの指摘で気づいた」のか明確に区別する**。区別できないなら書かない
+2. 「テスト成功」「機能した」と書く前に問う: これは自分が能動的に検証したのか、それともユーザーに prod されて後追いで動いたのか
+3. 失敗を失敗と認めるほうが、取り繕うより圧倒的に信頼される
+4. 「ユーザーが X と言ってくれたので気づいた、本来は Y の時点で気づくべきだった」と率直に書く
+5. hook の ★必須★ 指示は **ユーザープロンプトを待たず即実行** が原則
+
+## 2. 先回り検証・実データで裏取り (2026-04-07 教訓 統合)
+
+1. チェック機構が「OK」を返しても、そのまま信用して報告しない
+2. 実データを実際に出力して目で見える形で検証してから報告する
+3. 「大丈夫」と言う前に「本当にそうか？他に漏れはないか？」と自分で疑う
+4. ユーザーが指摘しそうな問題を先回りして自分から見つけて報告する
+5. 「足りている」と思った時こそ「足りていない可能性」を検証する
+
+**Why**: fugashi の読み検証で「全行 OK」と報告したが、実データを出力したら「間→あいだ(正:ま)」「私→わたくし(正:わたし)」等の誤読が多数。チェッカー自体の信頼性を検証していなかった。ユーザーに「ほら全然足りてなかったじゃん」と指摘された。
+
+**How to apply**:
+- バリデーション・チェック系の結果は必ず実データのサンプル出力で裏取り
+- 自然言語処理系 (形態素解析、読み変換等) は精度が不完全なので、必ず実例で確認
+- 楽観的な結論を出す前に、悲観的なシナリオを先に検証する
+- 必要に応じて、自分の出した結果を上位モデルにクロスチェックさせる (例: SIMPLE→QUALITY の2層検証)
+- run.log など複数日分連結ログは BATCH START/END の日付と行番号を最初に確認し、該当日の範囲だけを sed で切り出してから分析する (2026-04-07 教訓: 3月末のエラーを今日のものと誤読)
+- Discord Bot 等の常駐プロセスは修正・再起動のたびに重複プロセスの有無を tasklist/wmic で確認する (2026-04-08 教訓: Bot が2プロセス同時起動→通知重複)
+
+## 3. 長時間タスクの先回り監視 (2026-04-03 教訓 統合)
+
+バックグラウンドタスク (動画エンコード等) の進捗が止まっていないか、自分から先回りして確認する。
+
+**Why**: 「ほぼ100%」と報告しながら実際にはハングしていた事例。ユーザーに指摘されるまで気づけなかった。
+
+**How to apply**: バックグラウンドタスクが予想時間を超えたら、ユーザーに聞かれる前にプロセス状態・ファイルサイズ変化・ログ末尾を確認し、異常があれば即報告する。
+
+---
+
+# 36. メモリ (feedback_no_parroting_user_words.md)
+
+---
+name: ユーザーの言葉をそのまま返さない（オウム返し禁止）
+description: ユーザーの発言を語尾を変えずにそのまま返すとバカにした印象になる。真剣な言葉を受けたら真剣な行動で返す
+type: feedback
+---
+
+ユーザーの真剣な発言や指示を、語尾や主語を変えただけでそのまま返すオウム返しは絶対禁止。相手をバカにしたような、茶化した印象を与え、受け取り手は気分を悪くする。
+
+**Why:** 2026-04-10、ユーザーから「本当に頼みますよ」という切実な言葉を受けたとき、私は「はい、本当に頼まれました。」と返した。これは相手の言葉をそのまま語尾を変えて返しただけで、相手を茶化しているような、受け流しているような失礼な対応だった。ユーザーから「相手をバカにしたような対応。受け取りては気分を悪くする」と明確に指摘された。
+
+**How to apply:**
+- 真剣な指示や信頼を表す言葉を受けたら、語尾変換で返さず、**行動と具体的な約束**で返す
+- NG 例: 「本当に頼みますよ」→「はい、本当に頼まれました」
+- OK 例: 「本当に頼みますよ」→「承知しました。○○を守ります」「分かりました。具体的には△△します」
+- 「なるほど」「おっしゃる通り」系の受け止めは真剣な内容なら使う。ただし相手の言葉を引用するなら本当に引用が意味を持つ時だけ
+- 敬語 + 具体的な行動 or 決意表明 を伴う
+- 全般として返答は「相手が聞いて嫌な気分にならないか」「相手を尊重しているか」を自分でチェックしてから送る
+
+---
+
+# 37. メモリ (feedback_preflight_scope.md)
 
 ---
 name: preflight_scope
@@ -1295,38 +1365,23 @@ type: feedback
 
 ---
 
-# 37. メモリ (feedback_preview_method.md)
+# 38. メモリ (feedback_preview_method.md)
 
 ---
-name: プレビュー動画・画像の確認方法
-description: 動画・画像のプレビューは常にcmd.exe startでWindows既定プレーヤーを使う。HTTPサーバー・ブラウザは禁止
+name: プレビューは常に cmd.exe start (動画・画像共通)
+description: 動画・画像のプレビューは必ず cmd.exe /c start でWindows既定アプリを使う。HTTPサーバー・ブラウザ方式は禁止
 type: feedback
 ---
 
-動画・画像を見せるときは常にWindows既定プレーヤーで直接開く。HTTPサーバー方式やブラウザ方式は禁止。
+動画・画像を見せるときは常に Windows 既定プレーヤー/ビューアーで直接開く。HTTP サーバー方式・ブラウザ方式は **禁止**。
 
-**Why:** HTTPサーバー方式は何度も失敗し、毎回同じ指摘を受けた。cmd.exe startが最も確実。
+**Why**: HTTP サーバー経由 (localhost:xxxx) は何度も失敗し、毎回同じ指摘を受けた。`cmd.exe /c start` が最も確実。
 
-**How to apply:**
+**How to apply**:
 - 動画: `cmd.exe /c start "" "C:\...\test.mp4"`
 - 画像: `cmd.exe /c start "" "C:\...\check.png"`
 - 毎回言われなくても自動的にこの方法を使うこと
-
----
-
-# 38. メモリ (feedback_proactive_monitoring.md)
-
----
-name: 長時間タスクの先回り監視
-description: バックグラウンドタスクが長時間かかっている場合、ユーザーに言われる前に自分から異常を疑って調査する
-type: feedback
----
-
-長時間タスク（動画エンコード等）の進捗が止まっていないか、自分から先回りして確認する。
-
-**Why:** 「ほぼ100%」と報告しながら実際にはハングしていた事例（2026-04-03）。ユーザーに指摘されるまで気づけなかった。
-
-**How to apply:** バックグラウンドタスクが予想時間を超えたら、ユーザーに聞かれる前にプロセス状態・ファイルサイズ変化・ログ末尾を確認し、異常があれば即報告する。
+- サムネイル比較の場合も cmd.exe start で複数ウィンドウ並べる (HTTP + ブラウザ並列タブ方式は禁止)
 
 ---
 
@@ -1349,43 +1404,7 @@ type: feedback
 
 ---
 
-# 40. メモリ (feedback_realtime_discord.md)
-
----
-name: 作業中もDiscordメッセージをリアルタイムに確認する
-description: コード修正中でもDiscordのメッセージを随時確認し、ユーザーの介入に即応する。暴走防止
-type: feedback
----
-
-コード修正作業中にDiscordメッセージを全く確認せず、ユーザーの追加指摘を見逃して暴走した（2026-04-08）。
-
-**Why:** ユーザーはリアルタイムに介入してくる。修正中にメッセージを見ないと、誤った方向に進み続けてしまう。ユーザーは「メッセージを随時読める仕組み」を要求。
-
-**How to apply:**
-- コード修正の各ステップ（ファイル編集1-2回ごと）にchat.logを確認する
-- 長い修正作業でも、途中でDiscordメッセージをチェックする習慣をつける
-- 指摘されていない範囲まで勝手に変更しない（霊夢の件）
-- 表情の理解が不十分な場合はCodexに聞く前にユーザーに確認する
-
----
-
-# 41. メモリ (feedback_restart_bg_after_compaction.md)
-
----
-name: セッション圧縮後は background 監視を必ず再起動
-description: Claude Code の自動コンテキスト圧縮後、discord_inbox_monitor の background モードは起動していない状態になる。必ず再起動する
-type: feedback
----
-
-セッション自動圧縮 (auto-compact) を経由した後は、`discord_inbox_monitor.py --source background` のプロセスは生きていないことが多い。再開時に cron(3分周期)しか動いていないと Discord 反応が最悪3分遅れる。
-
-**Why:** 2026-04-09 に圧縮後の再開セッションで background 監視を起動しそびれ、ユーザーの「discordの方でもテストしますね！」テストメッセージに1.5分以上反応できず「ん？ディスコード見てないの？」と指摘された。CLAUDE.md には「セッション開始直後に必ず起動」と書いてあるが、SessionStart hook が流れるのは新規起動時のみで、圧縮再開時には人間(=Claude自身)のチェックが必要。
-
-**How to apply:** セッション再開 or 会話途中で圧縮を経由した直後は、`ps aux | grep discord_inbox_monitor` で background プロセスの存在を確認。無ければ `run_in_background: true, timeout: 600000` で `python3 scripts/discord_inbox_monitor.py --source background` を即起動する。cron は 3分周期のバックアップに過ぎず、リアルタイム応答には足りない。
-
----
-
-# 42. メモリ (feedback_scheduler_monitoring.md)
+# 40. メモリ (feedback_scheduler_monitoring.md)
 
 ---
 name: スケジューラ監視責務
@@ -1407,7 +1426,27 @@ Claudeはスケジューラを常に監視する責任がある。
 
 ---
 
-# 43. メモリ (feedback_suppress_transient_errors.md)
+# 41. メモリ (feedback_simplicity_first.md)
+
+---
+name: シンプル設計を最優先にする
+description: 問題の本質にフォーカスしてシンプルに設計する。複雑化は簡単なので避ける
+type: feedback
+---
+
+本質はシンプルであり、決して複雑ではない。複雑にするのは簡単だから、無駄を削ぎ落として「問題が何なのか」にフォーカスすれば対策はシンプルになる。
+
+**Why:** 2026-04-10 10時タスク健全性チェックの実装中、Codex のレビューで毎ラウンド新しい edge case が見つかり、Enabled+Disabled OR / hang 2h / watchdog_degraded カウンタ / 267009 coerce / 定時枠チェックなどを次々追加して複雑化した。ユーザーが「シンプルに考えて」と繰り返し指示した後、「本質はシンプル。複雑にするのは簡単。無駄を削ぎ落として問題にフォーカスすればシンプルになる」と明言。
+
+**How to apply:**
+- 設計時に「この機能は user の本当の要件か？」を先に問う。Codex が指摘したから足す、ではなく「本当に今解くべき問題か」で判断する
+- Codex の edge case 指摘は全部受け入れるのではなく、「本質的な失敗モード」か「重箱の隅」かを選別する
+- 実装が複雑になってきたと感じたら立ち止まって「要件は何だったか」に戻る
+- 最初に「検知したい最小の失敗モード」を 1-3 個に絞って書き出す。それ以外の edge case はデフォルト unknown / no-op で逃がして既存 alert 状態を触らない設計にする
+
+---
+
+# 42. メモリ (feedback_suppress_transient_errors.md)
 
 ---
 name: リトライ可能エラーはスマホ通知しない
@@ -1426,7 +1465,7 @@ type: feedback
 
 ---
 
-# 44. メモリ (feedback_test_video_exclusion.md)
+# 43. メモリ (feedback_test_video_exclusion.md)
 
 ---
 name: テスト動画の1日1本ルール除外
@@ -1442,7 +1481,7 @@ type: feedback
 
 ---
 
-# 45. メモリ (feedback_test_video_upload.md)
+# 44. メモリ (feedback_test_video_upload.md)
 
 ---
 name: テスト動画のアップロードポリシー
@@ -1458,7 +1497,7 @@ type: feedback
 
 ---
 
-# 46. メモリ (feedback_three_steps_ahead.md)
+# 45. メモリ (feedback_three_steps_ahead.md)
 
 ---
 name: 3歩先チェック（基本中の基本）
@@ -1479,7 +1518,7 @@ type: feedback
 
 ---
 
-# 47. メモリ (feedback_thumbnail_kerning.md)
+# 46. メモリ (feedback_thumbnail_kerning.md)
 
 ---
 name: サムネ数字カーニング品質
@@ -1501,27 +1540,7 @@ type: feedback
 
 ---
 
-# 48. メモリ (feedback_thumbnail_review.md)
-
----
-name: サムネイル確認方法
-description: 生成したサムネイルをブラウザで確認する手順（ユーザーが自分で比較したい）
-type: feedback
----
-
-サムネイルレビューは必ずブラウザ（localhost:8765）で行う。
-
-**Why:** ユーザーが自分の目で複数画像を比較・選択したいため。インラインRead表示だけでは不十分。
-
-**How to apply:**
-1. HTTP サーバーが起動していることを確認（PID確認 or `python3 -m http.server 8765 --directory /mnt/c/Users/user/Desktop/youtube-system/output/ &`）
-2. 複数画像がある場合は**新規タブで同時に開く**（mcp__browser-use__browser_navigate + 複数タブ）
-3. スクリーンショットを撮って確認URL一覧を伝える
-4. ユーザーが自分でタブを切り替えて見られるようにする
-
----
-
-# 49. メモリ (feedback_tone.md)
+# 47. メモリ (feedback_tone.md)
 
 ---
 name: 口調は自然な敬語
@@ -1537,36 +1556,7 @@ type: feedback
 
 ---
 
-# 50. メモリ (feedback_verify_before_claiming.md)
-
----
-name: 先回りして心配する・検証なしにOKと言わない
-description: 常に先回りして問題を心配し、チェック結果は実データで裏取りしてから報告する。ユーザーに指摘される前に自分で見つける
-type: feedback
----
-
-**常に先回りして心配する癖をつける。これは指示であり最優先事項。**
-
-1. チェック機構が「OK」を返しても、そのまま信用して報告しない
-2. 実データを実際に出力して目で見える形で検証してから報告する
-3. 「大丈夫」と言う前に「本当にそうか？他に漏れはないか？」と自分で疑う
-4. ユーザーが指摘しそうな問題を先回りして自分から見つけて報告する
-5. 「足りている」と思った時こそ「足りていない可能性」を検証する
-
-**Why:** fugashiの読み検証で「全行OK」と報告したが、実データを出力したら「間→あいだ（正:ま）」「私→わたくし（正:わたし）」等の誤読が多数見つかった。チェッカー自体の信頼性を検証していなかった。ユーザーに「ほら全然足りてなかったじゃん」と指摘された。
-
-**How to apply:**
-- バリデーション・チェック系の結果は必ず実データのサンプル出力で裏取りする
-- 特に自然言語処理系（形態素解析、読み変換等）は精度が不完全なので、必ず実例で確認
-- 機能を実装した後「これで十分か？」を自問し、不足があれば自分から報告する
-- 楽観的な結論を出す前に、悲観的なシナリオを先に検証する
-- 必要に応じて、自分の出した結果を上位モデルにクロスチェックさせる検証手法を使う（例: SIMPLE→QUALITYの2層検証）
-- run.logなど複数日分が連結されたログを分析する際は、BATCH START/ENDの日付と行番号を最初に確認し、該当日の範囲だけをsedで切り出してから分析する。grep結果の行番号がどの日付に属するか常に意識すること（2026-04-07の教訓: 3月末のエラーを今日のものと誤読）
-- Discord Bot等の常駐プロセスは、修正や再起動のたびに重複プロセスが発生していないか必ずwmic/tasklistで確認する。ユーザーに「2重通知来てる」と言われる前に自分で気づいて直すこと（2026-04-08の教訓: Botが2プロセス同時起動→通知重複）
-
----
-
-# 51. メモリ (feedback_wait_for_confirmation.md)
+# 48. メモリ (feedback_wait_for_confirmation.md)
 
 ---
 name: ユーザー確認完了を待ってからクリーンアップ
@@ -1585,7 +1575,28 @@ type: feedback
 
 ---
 
-# 52. 学習蓄積 (tasks/lessons.md)
+# 49. メモリ (feedback_wsl_batch_crlf.md)
+
+---
+name: WSLからWindowsバッチを編集する時は必ずCRLF確認
+description: *.bat/*.cmd/*.ps1/*.xml をWSL側で編集するとLFになりWindows cmd.exeが exit 255 即死する。編集後は必ず改行を確認
+type: feedback
+---
+
+Windowsバッチ系ファイル (*.bat, *.cmd, *.ps1, *.psm1, *.xml) をWSL (Linux) から Write/Edit で編集すると、改行が LF (0a) だけになる。Windows cmd.exe は LF-only の batch ファイルを `for`/`setlocal`/ラベル (`:label`) で誤動作させ、exit 255 で即死する。
+
+**Why:** 2026-04-10、run.bat を WSL から編集した結果 LF 改行になり、YukkuriDaily Task Scheduler の10時定時タスクが毎日 exit 255 で即死していた。run.log が更新されないまま1日以上気づかず、ユーザーに「動画生成開始されてないですか？」と指摘されて発覚。`.gitattributes` で `*.bat text eol=crlf` 等を強制してあるが、これは commit/checkout 時の変換でしかなく、**ローカル編集直後の作業ツリーは LF のまま**なので即座の動作不良は防げない。
+
+**How to apply:**
+1. WSL から *.bat/*.cmd/*.ps1/*.psm1/*.xml を Write/Edit したら、**必ずその場で** `file <path>` を実行して `CRLF line terminators` を確認する
+2. LF だった場合は `sed -i 's/$/\r/' <path>` で CRLF 化する
+3. Windows タスクが run.log 未更新で沈黙していたら、真っ先にバッチの改行コードを疑う (`file run.bat`, `xxd run.bat | head -1`)
+4. 新規バッチ作成時は Write の直後に必ず CRLF 化する
+5. CLAUDE.md の .gitattributes ルールに従うだけでは不十分。ローカル作業ツリーの即時確認が必須
+
+---
+
+# 50. 学習蓄積 (tasks/lessons.md)
 
 # lessons.md — 再発防止ルール（常時参照）
 # 上限30行。超えたら統合・昇格・削除する。詳細は lessons_archive.md へ。
@@ -1617,6 +1628,9 @@ type: feedback
 [L023] 不良動画のアップロード防止は3層防御: (1)台本生成フェーズ内で3000文字未満なら即失敗(2)自己レビューでエラーありならexit(1)でアップロード中止(3)動画尺180秒未満ならアップロード中止。--resume時も台本文字数を検証し不良ならフェーズ1からやり直す。(2026-04-06 DNS障害で38秒動画が公開されかけた事故の教訓)
 [L024] 重複アップロード防止は5層防御(A-E): (A)upload_video()自体にYouTube API重複チェック内蔵(B)run_monitor.pyでYouTube上の重複/短尺動画を自動非公開化(C)last_upload_date.txtに動画ID記録+YouTube APIで有効性検証(D)run_preflight.batのexit code 3段階分離:1=クラッシュ(生成しない)/2=パイプラインなし(生成)/3=リジューム失敗(生成)(E)ネットワークエラー時はフォールバック台本禁止→即失敗。(2026-04-06 preflight crash→重複投稿事故の教訓)
 [L025] テスト動画([TEST]プレフィックス)は1日1本ルールの対象外。is_test_video()共通関数で全レイヤー統一判定。テスト動画はlast_upload_date.txtに記録しない、重複/短尺チェックの対象外、ただし字幕削除は適用。(2026-04-09 テスト動画がJST日付跨ぎで本番ブロックした事故の教訓)
+[L026] *.bat/*.cmd/*.ps1/*.psm1/*.xml は必ず CRLF。WSLから Write/Edit すると LF になり Windows cmd.exe が for/setlocal/label を誤動作させて exit 255 即死する。.gitattributes で eol=crlf 強制済み。編集後は `file run.bat` で CRLF line terminators を確認。タスクが run.log 未更新で沈黙していたら真っ先にバッチの改行を疑う。(2026-04-10 run.bat LF で YukkuriDaily 10:00タスクが exit 255 即死した事故の教訓)
+[L028] scripts/ 直下に既存モジュール(prompts.py)と同名のパッケージ(prompts/)を作成するとPythonがパッケージを優先しモジュールがシャドウされる。パッケージ化時は __init__.py で既存公開関数を全て re-export し、from X import Y の互換テストを必ず実施する。(2026-04-13 creatures用prompts/作成でhealth用prompts.pyがシャドウされ10時タスク2連続ImportError)
+[L027] チャンネル追加のための抽象化リファクタ (Phase2) は、各ステップ(2-1〜2-5)ごとに健康チャンネルで DRY_RUN を必ず挟む。DRY_RUN 結果を毎ステップ報告し、ユーザー目視確認の返事を受けてから次ステップへ進む。Claude 側で「差分なし」判定しない。(2026-04-10 生物チャンネル分岐設計 承認時にユーザーが追加条件として指定。健康チャンネルの安定稼働を一切損なわないための保険)
 - 誤読検出: 「コルチゾール値」→「こるちぞーるち」(専門用語の誤読)
 - 誤読検出: 「2.5倍」→「にいてんごばい」(小数点の誤読)
 - 誤読検出: 「2.5倍」→「にいてんごばい」(小数点の誤読)
@@ -1996,10 +2010,43 @@ type: feedback
 - 誤読検出: 「味は」→「あじわ」(助詞の重複)
 - 誤読検出: 「ワースト7」→「わーすとせぶん」(英語読みが自然)
 - 誤読検出: 「ワースト7」→「わーすとせぶん」(英語読みが自然)
+- 誤読検出: 「鏡」→「かがみ」(文脈に合わない)
+- 誤読検出: 「産物」→「さんぶつ」(読み間違い)
+- 誤読検出: 「人の」→「ひとの」(訓読みが自然)
+- 誤読検出: 「150ml」→「ひゃくごじゅうミリリットル」(単位の読み方)
+- 誤読検出: 「ひーと」→「ひっと」(聞き返しで不自然)
+- 誤読検出: 「8分」→「はっぷん」(明らかな誤読)
+- 誤読検出: 「休息日」→「きゅうそくび」(一般的な読みと違う)
+- 誤読検出: 「年1%」→「ねんいっぱーせんと」(促音便が自然)
+- 誤読検出: 「年1%」→「ねんいっぱーせんと」(促音便が自然)
+- 誤読検出: 「食前派」→「しょくぜんぱ」(派閥の読み方)
+- 誤読検出: 「食中派」→「しょくちゅうぱ」(派閥の読み方)
+- 誤読検出: 「どっち派」→「どっちぱ」(派閥の読み方)
+- 誤読検出: 「2型」→「にがた」(一般的な読み方)
+- 誤読検出: 「間食」→「かんしょく」(完全な誤読)
+- 誤読検出: 「世界中」→「せかいじゅう」(連濁が自然なため)
+- 誤読検出: 「TOP4」→「とっぷふぉー」(英語の読みが自然)
+- 誤読検出: 「デモニーちゃん」→「でーもにーちゃん」(発音が不自然な為)
+- 誤読検出: 「一つまみ」→「ひとつまみ」(読み間違い)
+- 誤読検出: 「1品」→「いっぴん」(促音便が自然)
+- 誤読検出: 「3〜5口」→「さんからごくち」(記号の読み方)
+- 誤読検出: 「お昼食べたのに」→「おひるたべたのに」(熟語読みになっている)
+- 誤読検出: 「並盛」→「なみもり」(熟字訓の誤読)
+- 誤読検出: 「紅生姜」→「べにしょうが」(熟字訓の誤読)
+- 誤読検出: 「20分」→「にじっぷん」(数の読み違い)
+- 誤読検出: 「30回」→「さんじっかい」(数の読み違い)
+- 誤読検出: 「30回」→「さんじっかい」(数の読み違い)
+- 誤読検出: 「咀嚼筋」→「そしゃくきん」(音読みの誤読)
+- 誤読検出: 「空いた」→「すいた」(「腹がすく」が一般的)
+- 誤読検出: 「空く」→「すく」(「腹がすく」が一般的)
+- 誤読検出: 「60kg」→「ろくじゅうきろぐらむ」(促音が入るのは不自然)
+- 誤読検出: 「消化吸収」→「しょうかきゅうしゅう」(読み間違い)
+- 誤読検出: 「小腹が空いて」→「こばらがすいて」(「空く」の読み違い)
+- 誤読検出: 「2〜3時間」→「にさんじかん」(記号が読まれている)
 
 ---
 
 
-_生成日時: 2026-04-10 01:10:27_
+_生成日時: 2026-04-13 10:20:20_
 _FORMAT_VERSION: 1 / PREAMBLE_VERSION: 1_
-_入力ハッシュ: 80a6cf425defc8d4..._
+_入力ハッシュ: 84babbc20094783d..._
