@@ -487,9 +487,33 @@ def _check_daily_task_health() -> tuple[str, str]:
     except (TypeError, ValueError):
         code = None
     if code != 0:
+        # exit!=0 でも今日の動画アップロードが完了していれば healthy 扱い
+        if _has_successful_upload_today():
+            return "healthy", f"exit={code} but upload_ok last={last_run_jst.strftime('%H:%M')}"
         return "down", f"exit={code} last={last_run_jst.strftime('%H:%M')}"
 
     return "healthy", f"ok last={last_run_jst.strftime('%H:%M')}"
+
+
+def _has_successful_upload_today() -> bool:
+    """今日のoutput/にアップロード完了済みのpipeline.jsonがあるか確認。"""
+    output_dir = PROJECT_ROOT / "output"
+    if not output_dir.exists():
+        return False
+    today_str = datetime.now(JST).strftime("%Y%m%d")
+    try:
+        today_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith(today_str)]
+    except OSError:
+        return False
+    for d in today_dirs:
+        pipeline = safe_read_json(d / "pipeline.json")
+        if not pipeline or not isinstance(pipeline, dict):
+            continue
+        phases = pipeline.get("phases", {})
+        upload = phases.get("upload", {})
+        if isinstance(upload, dict) and upload.get("status") == "completed":
+            return True
+    return False
 
 
 def _scan_pipeline_errors() -> str | None:
