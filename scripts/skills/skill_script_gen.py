@@ -13,6 +13,7 @@ from skills._common import (
     call_with_retry,
     ensure_scripts_path,
     get_llm,
+    load_manifest,
     update_phase,
     SkillLogger,
 )
